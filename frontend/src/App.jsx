@@ -29,6 +29,7 @@ import CrmCampaigns   from './pages/CrmCampaigns';
 import SmsSettings    from './pages/SmsSettings';
 import WhatsAppSettings from './pages/WhatsAppSettings';
 import GenericPage from './pages/GenericPage';
+import DineIn from './pages/DineIn';
 
 const URL_TO_PAGE = {
   '/home':                        Dashboard,
@@ -66,6 +67,7 @@ const URL_TO_PAGE = {
   '/crm/campaigns':               CrmCampaigns,
   '/payment-methods':             PaymentMethods,
   '/pos/tables':                  Tables,
+  '/dine-in':                     DineIn, 
 };
 
 function AppInner() {
