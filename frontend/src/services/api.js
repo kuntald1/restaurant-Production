@@ -1,4 +1,4 @@
-const RAILWAY_URL = '';
+const BACKEND_URL = 'https://currycloud.mooo.com';
 
 // In dev: strip the Railway domain so requests go to localhost:5173/...
 // Vite proxy then forwards them to Railway — no CORS.
@@ -8,7 +8,7 @@ const buildUrl = (endpoint) => {
     // endpoint e.g. /pos/kot — goes to localhost:5173/pos/kot → proxy → Railway
     return endpoint;
   }
-  return `${RAILWAY_URL}${endpoint}`;
+  return `${BACKEND_URL}${endpoint}`;
 };
 
 const request = async (method, endpoint, body = null, isFormData = false) => {

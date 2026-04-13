@@ -98,7 +98,7 @@ function AppInner() {
   );
 }
 
-const BACKEND = 'https://restaurantbackend-production-8e87.up.railway.app';
+const BACKEND = 'https://currycloud.mooo.com';
 
 // Keep Railway backend awake — pings every 4 minutes
 function useKeepAlive() {
