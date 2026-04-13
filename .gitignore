@@ -1,0 +1,44 @@
+# Environment files - contains passwords and secrets
+.env
+*.env
+
+# Python cache files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.py[cod]
+
+# Python compiled files
+backend/app/core/__pycache__/
+backend/app/models/__pycache__/
+backend/app/routers/__pycache__/
+backend/app/schemas/__pycache__/
+backend/app/services/__pycache__/
+backend/app/storage/__pycache__/
+backend/app/utils/__pycache__/
+
+# Node modules
+node_modules/
+dist/
+build/
+
+# Static uploaded images (don't push user uploaded files)
+backend/static/
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Database backup files
+*.sql
+*.sqlite
+*.dump
+
+# ZIP files
+*.zip
