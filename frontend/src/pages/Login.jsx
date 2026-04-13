@@ -96,7 +96,7 @@ export default function Login() {
         </div>
 
         {/* Brand */}
-        <div style={S.brandName}>Restaurant OS</div>
+        <div style={S.brandName}>Restaurant </div>
         <div style={S.brandSub}>Management Suite · Sign in to your dashboard</div>
 
         {/* Divider */}
