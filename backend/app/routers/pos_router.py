@@ -40,6 +40,7 @@ def get_tables(company_id: int, db: Session = Depends(get_db)):
 
 @router.post("/tables", response_model=TableResponse)
 def create_table(data: TableCreate, db: Session = Depends(get_db)):
+    from app.models.pos_models import RestaurantTable
     table = RestaurantTable(**data.model_dump())
     db.add(table)
     db.commit()
