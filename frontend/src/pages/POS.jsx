@@ -274,7 +274,18 @@ const loadTables = useCallback(async () => {
 
   const loadOrders = useCallback(async () => {
     if (!cid) return;
-    try { setOrders(await posOrderAPI.getRunning(cid)); } catch {}
+    try {
+      const data = await posOrderAPI.getRunning(cid);
+      setOrders(data);
+      // Cache for offline use
+      localStorage.setItem(`rms_running_orders_${cid}`, JSON.stringify(data));
+    } catch {
+      // Load from cache when offline
+      try {
+        const cached = JSON.parse(localStorage.getItem(`rms_running_orders_${cid}`) || '[]');
+        if (cached.length > 0) setOrders(cached);
+      } catch {}
+    }
   }, [cid]);
 
 const loadMenu = useCallback(async () => {
@@ -342,6 +353,28 @@ const loadMenu = useCallback(async () => {
   }, []);
 
   const syncOfflineOrders = async () => {
+    // Sync existing online orders that were billed while offline
+    try {
+      const pendingBills = JSON.parse(localStorage.getItem(`rms_pending_bills_${cid}`) || '[]');
+      for (const bill of pendingBills) {
+        try {
+          await posBillAPI.generate({
+            order_id:          bill.order_id,
+            company_unique_id: cid,
+            payment_method:    bill.payment_method,
+            amount_paid:       bill.amount_paid,
+            discount_amount:   0,
+            service_charge:    bill.surcharge || 0,
+            sgst_amount:       bill.sgst_amount || 0,
+            cgst_amount:       bill.cgst_amount || 0,
+            created_by:        user?.user_id || null,
+          });
+        } catch(e) { console.error('Pending bill sync failed:', e); }
+      }
+      localStorage.removeItem(`rms_pending_bills_${cid}`);
+      loadOrders();
+    } catch {}
+
     const pending = getUnsyncedOfflineOrders();
     if (!pending.length) return;
     showToast(`🔄 Syncing ${pending.length} offline order(s)...`);
@@ -481,6 +514,20 @@ const loadMenu = useCallback(async () => {
       return;
     }
 
+    // For online orders that are now offline — update local state only
+    if (!isOnline) {
+      showToast('📴 Offline — items will sync when internet returns', 'info');
+      setActiveOrder(prev => {
+        if (!prev) return prev;
+        const items = [...(prev.items || [])];
+        const ex = items.find(i => i.food_menu_id === menuItem.food_menu_id);
+        if (ex) { ex.quantity += 1; }
+        else { items.push({ food_menu_id: menuItem.food_menu_id, item_name: menuItem.name, item_code: menuItem.code || '', unit_price: parseFloat(menuItem.sale_price || 0), quantity: 1, is_veg: menuItem.is_veg !== false, is_cancelled: false, order_item_id: Date.now() }); }
+        return { ...prev, items };
+      });
+      return;
+    }
+
     try {
       await posOrderAPI.addItem(activeOrder.order_id, cid, {
         food_menu_id:  menuItem.food_menu_id,
@@ -511,6 +558,21 @@ const loadMenu = useCallback(async () => {
         const updated = removeItemFromOfflineOrder(activeOrder.offline_id, item.food_menu_id);
         if (updated) setActiveOrder({ ...updated });
       }
+      return;
+    }
+
+    // For online orders that are now offline — update local state only
+    if (!isOnline) {
+      setActiveOrder(prev => {
+        if (!prev) return prev;
+        const items = [...(prev.items || [])];
+        const idx = items.findIndex(i => i.food_menu_id === item.food_menu_id);
+        if (idx === -1) return prev;
+        const newQty = items[idx].quantity + delta;
+        if (newQty <= 0) items.splice(idx, 1);
+        else items[idx] = { ...items[idx], quantity: newQty };
+        return { ...prev, items };
+      });
       return;
     }
 
@@ -2088,7 +2150,23 @@ ${company.hsn ? `<div class="center muted" style="margin-top:4px">HSN: ${company
                       loadOrders();
                     }
                   } else {
-                    // Online order — print offline receipt with correct total
+                    // Online order billed while offline
+                    // Save to pending bills queue for sync when online
+                    try {
+                      const pendingBills = JSON.parse(localStorage.getItem(`rms_pending_bills_${cid}`) || '[]');
+                      pendingBills.push({
+                        order_id:       activeOrder?.order_id,
+                        order_number:   activeOrder?.order_number,
+                        payment_method: offlinePayMethod,
+                        amount_paid:    paid,
+                        surcharge:      surcharge,
+                        sgst_amount:    sgstAmt,
+                        cgst_amount:    cgstAmt,
+                        total:          total,
+                      });
+                      localStorage.setItem(`rms_pending_bills_${cid}`, JSON.stringify(pendingBills));
+                    } catch {}
+                    // Print offline receipt
                     const billData = {
                       order_number:   activeOrder?.order_number,
                       order_type:     activeOrder?.order_type,
@@ -2106,10 +2184,14 @@ ${company.hsn ? `<div class="center muted" style="margin-top:4px">HSN: ${company
                       total_payable:  total,
                     };
                     printOfflineBill(billData, selectedCompany || {});
-                    showToast('🧾 Bill printed! Sync to server when online.');
+                    showToast('🧾 Bill printed! Will auto-sync when online.');
                     setShowOfflineBillModal(false);
-                    // Remove from running orders list
+                    // Remove from running orders UI and cache
                     setOrders(prev => prev.filter(o => o.order_id !== activeOrder?.order_id));
+                    try {
+                      const cached = JSON.parse(localStorage.getItem(`rms_running_orders_${cid}`) || '[]');
+                      localStorage.setItem(`rms_running_orders_${cid}`, JSON.stringify(cached.filter(o => o.order_id !== activeOrder?.order_id)));
+                    } catch {}
                     setActiveOrder(null);
                   }
                 }}>
