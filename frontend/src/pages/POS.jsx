@@ -263,8 +263,8 @@ export default function POS({ onNavigate }) {
         foodMenuAPI.getAll(cid),
         foodCategoryAPI.getAll(cid),
       ]);
-      setMenuItems(items || []);
-      setCategories(['All', ...(cats || []).map(c => c.category_name)]);
+      setMenuItems((items || []).filter(i => i.IsActive && i.is_available));
+      setCategories([{ id: 'All', name: 'All' }, ...(cats || []).map(c => ({ id: c.food_category_id, name: c.category_name }))]);
     } catch {}
   }, [cid]);
 
@@ -951,7 +951,7 @@ ${company.hsn ? `<div class="center muted" style="margin-top:4px">HSN: ${company
   const canSendKOT   = activeOrder && !isLocked && activeItems.length > 0;
 
   const filteredMenu = menuItems.filter(item => {
-    const matchCat  = category === 'All' || item.category_name === category;
+    const matchCat  = category === 'All' || item.category_id === category;
     const matchSrch = item.name?.toLowerCase().includes(search.toLowerCase());
     const matchVeg  = vegFilter === null || (vegFilter ? item.is_veg !== false : item.is_veg === false);
     return matchCat && matchSrch && matchVeg;
@@ -1282,7 +1282,7 @@ ${company.hsn ? `<div class="center muted" style="margin-top:4px">HSN: ${company
 
         <div style={{ display: 'flex', gap: 6, padding: '8px 14px', overflowX: 'auto', borderBottom: '1px solid var(--border)' }}>
           {categories.map(c => (
-            <button key={c} style={{ ...S.catBtn, ...(category === c ? S.catActive : {}) }} onClick={() => setCategory(c)}>{c}</button>
+            <button key={c.id} style={{ ...S.catBtn, ...(category === c.id ? S.catActive : {}) }} onClick={() => setCategory(c.id)}>{c.name}</button>
           ))}
         </div>
 
@@ -1294,9 +1294,11 @@ ${company.hsn ? `<div class="center muted" style="margin-top:4px">HSN: ${company
               <div key={item.food_menu_id} style={{ ...S.menuCard, ...(inOrder ? { border: '2px solid var(--primary)', background: 'var(--primary-light)' } : {}) }} onClick={() => addItem(item)}>
                 {inOrder && <div style={{ position: 'absolute', top: 6, left: 6, background: 'var(--primary)', color: '#fff', borderRadius: '50%', width: 20, height: 20, fontSize: 11, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>×{inOrder.quantity}</div>}
                 <div style={{ position: 'absolute', top: 6, right: 6, width: 8, height: 8, borderRadius: '50%', background: item.is_veg !== false ? 'var(--primary)' : '#dc2626' }} />
-                <div style={{ fontSize: 28, textAlign: 'center', marginBottom: 4, flexShrink: 0 }}>🍱</div>
-                {item.image_url && <img src={item.image_url} alt="" style={{ width: '100%', height: 60, objectFit: 'cover', borderRadius: 6, marginBottom: 4 }} onError={e => e.target.style.display='none'} />}
-                <div style={{ fontSize: 12, fontWeight: 500, lineHeight: 1.3, marginBottom: 4, flex: 1, overflow: 'hidden', maxHeight: 32, wordBreak: 'break-word' }}>{item.name}</div>
+                {item.image_url
+                  ? <img src={item.image_url} alt="" style={{ width: '100%', height: 80, objectFit: 'cover', borderRadius: 6, marginBottom: 4 }} onError={e => e.target.style.display='none'} />
+                  : <div style={{ fontSize: 28, textAlign: 'center', marginBottom: 4, height: 80, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f5f5f5', borderRadius: 6 }}>🍱</div>
+                  }
+                  <div style={{ fontSize: 12, fontWeight: 500, lineHeight: 1.3, marginBottom: 4 }}>{item.name}</div>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <span style={{ fontWeight: 700, fontSize: 13 }}>₹{parseFloat(item.sale_price || 0).toFixed(0)}</span>
                   <button style={S.addBtn} onClick={e => { e.stopPropagation(); addItem(item); }}>+ Add</button>
