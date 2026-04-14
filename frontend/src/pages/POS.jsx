@@ -353,32 +353,65 @@ const loadMenu = useCallback(async () => {
   }, []);
 
   const syncOfflineOrders = async () => {
-    // Sync pending items added to existing online orders while offline
+    // Sync pending item changes for existing online orders
     try {
+      let anySynced = false;
+
+      // 1. Sync deletions first
+      const delKey = `rms_pending_deletions_${cid}`;
+      const pendingDeletions = JSON.parse(localStorage.getItem(delKey) || '[]');
+      const syncedDels = [];
+      for (const del of pendingDeletions) {
+        try {
+          // Set qty to 0 = delete
+          await posOrderAPI.updateQty(del.order_id, del.order_item_id, 0);
+          syncedDels.push(del);
+          anySynced = true;
+        } catch(e) { console.error('Deletion sync failed:', e); }
+      }
+      if (syncedDels.length > 0) {
+        localStorage.setItem(delKey, JSON.stringify(pendingDeletions.filter(d => !syncedDels.includes(d))));
+      }
+
+      // 2. Sync qty updates
+      const updateKey = `rms_pending_updates_${cid}`;
+      const pendingUpdates = JSON.parse(localStorage.getItem(updateKey) || '[]');
+      const syncedUpdates = [];
+      for (const upd of pendingUpdates) {
+        try {
+          await posOrderAPI.updateQty(upd.order_id, upd.order_item_id, upd.new_qty);
+          syncedUpdates.push(upd);
+          anySynced = true;
+        } catch(e) { console.error('Update sync failed:', e); }
+      }
+      if (syncedUpdates.length > 0) {
+        localStorage.setItem(updateKey, JSON.stringify(pendingUpdates.filter(u => !syncedUpdates.includes(u))));
+      }
+
+      // 3. Sync new item additions
       const key = `rms_pending_items_${cid}`;
       const pendingItems = JSON.parse(localStorage.getItem(key) || '[]');
-      if (pendingItems.length > 0) {
-        showToast(`🔄 Syncing ${pendingItems.length} pending item(s)...`);
-        const synced = [];
-        for (const item of pendingItems) {
-          try {
-            await posOrderAPI.addItem(item.order_id, cid, {
-              food_menu_id:  item.food_menu_id,
-              item_name:     item.item_name,
-              item_code:     item.item_code || '',
-              category_name: item.category_name || '',
-              unit_price:    item.unit_price,
-              quantity:      item.quantity,
-              is_veg:        item.is_veg !== false,
-            });
-            synced.push(item);
-          } catch(e) { console.error('Item sync failed:', e); }
-        }
-        // Remove synced items
-        const remaining = pendingItems.filter(i => !synced.includes(i));
-        localStorage.setItem(key, JSON.stringify(remaining));
-        if (synced.length > 0) showToast(`✅ ${synced.length} item(s) synced!`);
+      const synced = [];
+      for (const item of pendingItems) {
+        try {
+          await posOrderAPI.addItem(item.order_id, cid, {
+            food_menu_id:  item.food_menu_id,
+            item_name:     item.item_name,
+            item_code:     item.item_code || '',
+            category_name: item.category_name || '',
+            unit_price:    item.unit_price,
+            quantity:      item.quantity,
+            is_veg:        item.is_veg !== false,
+          });
+          synced.push(item);
+          anySynced = true;
+        } catch(e) { console.error('Item sync failed:', e); }
       }
+      if (synced.length > 0) {
+        localStorage.setItem(key, JSON.stringify(pendingItems.filter(i => !synced.includes(i))));
+      }
+
+      if (anySynced) showToast('✅ Offline changes synced to server!');
     } catch {}
 
     // Sync existing online orders that were billed while offline
@@ -612,28 +645,62 @@ const loadMenu = useCallback(async () => {
 
     // For online orders that are now offline — update local state AND pending queue
     if (!isOnline) {
-      // Save qty change to pending items queue
+      // Save qty change / deletion to pending queue
       try {
         const key = `rms_pending_items_${cid}`;
         const pendingItems = JSON.parse(localStorage.getItem(key) || '[]');
-        const ex = pendingItems.find(i => i.order_id === activeOrder.order_id && i.food_menu_id === item.food_menu_id);
-        if (ex) {
-          ex.quantity += delta;
-          if (ex.quantity <= 0) {
-            const idx = pendingItems.indexOf(ex);
-            pendingItems.splice(idx, 1);
+        const delKey = `rms_pending_deletions_${cid}`;
+        const pendingDeletions = JSON.parse(localStorage.getItem(delKey) || '[]');
+
+        const newQtyOnServer = item.quantity + delta; // what qty should be on server
+
+        if (newQtyOnServer <= 0) {
+          // Full deletion — track order_item_id for server deletion
+          if (item.order_item_id && !String(item.order_item_id).startsWith('OFFLINE')) {
+            const alreadyTracked = pendingDeletions.find(d => d.order_item_id === item.order_item_id);
+            if (!alreadyTracked) {
+              pendingDeletions.push({
+                order_id:      activeOrder.order_id,
+                order_item_id: item.order_item_id,
+                food_menu_id:  item.food_menu_id,
+              });
+              localStorage.setItem(delKey, JSON.stringify(pendingDeletions));
+            }
           }
-        } else if (delta > 0) {
-          pendingItems.push({
-            order_id:      activeOrder.order_id,
-            food_menu_id:  item.food_menu_id,
-            item_name:     item.item_name,
-            item_code:     item.item_code || '',
-            category_name: item.category_name || '',
-            unit_price:    parseFloat(item.unit_price || 0),
-            quantity:      delta,
-            is_veg:        item.is_veg !== false,
-          });
+          // Also remove from pending additions if it was added offline
+          const addIdx = pendingItems.findIndex(i => i.order_id === activeOrder.order_id && i.food_menu_id === item.food_menu_id);
+          if (addIdx !== -1) pendingItems.splice(addIdx, 1);
+        } else {
+          // Qty change — track as update
+          const ex = pendingItems.find(i => i.order_id === activeOrder.order_id && i.food_menu_id === item.food_menu_id);
+          if (ex) {
+            ex.quantity += delta;
+            if (ex.quantity <= 0) {
+              const idx = pendingItems.indexOf(ex);
+              pendingItems.splice(idx, 1);
+            }
+          } else if (delta > 0) {
+            pendingItems.push({
+              order_id:      activeOrder.order_id,
+              food_menu_id:  item.food_menu_id,
+              item_name:     item.item_name,
+              item_code:     item.item_code || '',
+              category_name: item.category_name || '',
+              unit_price:    parseFloat(item.unit_price || 0),
+              quantity:      delta,
+              is_veg:        item.is_veg !== false,
+            });
+          } else {
+            // Decrease qty on existing server item — track as qty update
+            const updateKey = `rms_pending_updates_${cid}`;
+            const pendingUpdates = JSON.parse(localStorage.getItem(updateKey) || '[]');
+            const exUpdate = pendingUpdates.find(u => u.order_item_id === item.order_item_id);
+            if (exUpdate) { exUpdate.new_qty = newQtyOnServer; }
+            else if (item.order_item_id && !String(item.order_item_id).startsWith('OFFLINE')) {
+              pendingUpdates.push({ order_id: activeOrder.order_id, order_item_id: item.order_item_id, new_qty: newQtyOnServer });
+            }
+            localStorage.setItem(updateKey, JSON.stringify(pendingUpdates));
+          }
         }
         localStorage.setItem(key, JSON.stringify(pendingItems));
       } catch {}
