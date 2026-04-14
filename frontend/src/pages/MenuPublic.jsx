@@ -19,7 +19,7 @@ export default function MenuPublic() {
         const [menuRes, catRes, compRes] = await Promise.all([
           fetch(`/company/getallfoodmenu/${companyId}`).then(r => r.json()),
           fetch(`/company/getallfoodcategory/${companyId}`).then(r => r.json()),
-          fetch(`/company/getallcompany`).then(r => r.json()).then(data => (data || []).find(c => c.company_unique_id === parseInt(companyId)) || null),
+          fetch(`/company/`).then(r => r.json()).then(data => (data || []).find(c => c.company_unique_id === parseInt(companyId)) || null),
         ]);
         setMenus((menuRes || []).filter(m => m.IsActive && m.is_available));
         setCats(catRes || []);
