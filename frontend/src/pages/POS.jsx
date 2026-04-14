@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useApp } from '../context/useApp';
 import { posTableAPI, posOrderAPI, posKotAPI, posBillAPI, foodMenuAPI, foodCategoryAPI, qrAPI, paymentTransactionAPI, crmCustomerAPI, crmPromoAPI, smsSettingsAPI, paymentLinkAPI } from '../services/api';
+import { cacheMenu, cacheCategories, cacheTables, getCachedMenu, getCachedCategories, getCachedTables } from '../services/offlineStore';
 
 const STATUS_META = {
   draft:                       { label: 'Draft',       bg: '#f3f4f6', color: '#374151' },
@@ -246,27 +247,47 @@ export default function POS({ onNavigate }) {
   const [deliveryAddr, setDeliveryAddr] = useState('');
 
   // ── Load data ─────────────────────────────────────────────
-  const loadTables = useCallback(async () => {
-    if (!cid) return;
-    try { setTables(await posTableAPI.getAll(cid)); } catch {}
-  }, [cid]);
+const loadTables = useCallback(async () => {
+  if (!cid) return;
+  try {
+    const t = await posTableAPI.getAll(cid);
+    setTables(t);
+    cacheTables(t); // ── Cache for offline ──
+  } catch {
+    const cached = getCachedTables();
+    if (cached.length > 0) setTables(cached);
+  }
+}, [cid]);
 
   const loadOrders = useCallback(async () => {
     if (!cid) return;
     try { setOrders(await posOrderAPI.getRunning(cid)); } catch {}
   }, [cid]);
 
-  const loadMenu = useCallback(async () => {
-    if (!cid) return;
-    try {
-      const [items, cats] = await Promise.all([
-        foodMenuAPI.getAll(cid),
-        foodCategoryAPI.getAll(cid),
-      ]);
-      setMenuItems((items || []).filter(i => i.IsActive && i.is_available));
-      setCategories([{ id: 'All', name: 'All' }, ...(cats || []).map(c => ({ id: c.food_category_id, name: c.category_name }))]);
-    } catch {}
-  }, [cid]);
+const loadMenu = useCallback(async () => {
+  if (!cid) return;
+  try {
+    const [items, cats] = await Promise.all([
+      foodMenuAPI.getAll(cid),
+      foodCategoryAPI.getAll(cid),
+    ]);
+    const filtered = (items || []).filter(i => i.IsActive && i.is_available);
+    setMenuItems(filtered);
+    setCategories([{ id: 'All', name: 'All' }, ...(cats || []).map(c => ({ id: c.food_category_id, name: c.category_name }))]);
+    // ── Cache for offline use ──
+    cacheMenu(filtered);
+    cacheCategories(cats || []);
+  } catch {
+    // ── Load from cache if offline ──
+    const cached = getCachedMenu();
+    const cachedCats = getCachedCategories();
+    if (cached.length > 0) {
+      setMenuItems(cached);
+      setCategories([{ id: 'All', name: 'All' }, ...cachedCats.map(c => ({ id: c.food_category_id, name: c.category_name }))]);
+      showToast('📴 Showing cached menu (offline)', 'info');
+    }
+  }
+}, [cid]);
 
   const loadOrderDetail = useCallback(async (orderId) => {
     try {

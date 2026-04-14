@@ -36,7 +36,7 @@ import QRGenerator from './pages/QRGenerator';
 const URL_TO_PAGE = {
   '/home':                        Dashboard,
   '/dashboard':                   Dashboard,
-  '/sale':                        POS,          // ← POS mapped to /sale from menu table
+  '/sale':                        POS,
   '/pos':                         POS,
   '/company':                     Companies,
   '/company/list':                Companies,
@@ -70,9 +70,58 @@ const URL_TO_PAGE = {
   '/payment-methods':             PaymentMethods,
   '/pos/tables':                  Tables,
   '/dine-in':                     DineIn,
-  '/menu':                        MenuPublic, 
+  '/menu':                        MenuPublic,
   '/qr-generator':                QRGenerator,
 };
+
+// ── Offline Banner ────────────────────────────────────────────
+function OfflineBanner() {
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const [showBack, setShowBack] = useState(false);
+
+  useEffect(() => {
+    const goOffline = () => { setIsOnline(false); setShowBack(false); };
+    const goOnline  = () => {
+      setIsOnline(true);
+      setShowBack(true);
+      setTimeout(() => setShowBack(false), 4000);
+    };
+    window.addEventListener('offline', goOffline);
+    window.addEventListener('online',  goOnline);
+    return () => {
+      window.removeEventListener('offline', goOffline);
+      window.removeEventListener('online',  goOnline);
+    };
+  }, []);
+
+  if (isOnline && !showBack) return null;
+
+  return (
+    <div style={{
+      position: 'fixed',
+      top: 0,
+      left: 0,
+      right: 0,
+      zIndex: 9999,
+      padding: '10px 20px',
+      textAlign: 'center',
+      fontWeight: 600,
+      fontSize: 14,
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 8,
+      background: isOnline ? '#16a34a' : '#dc2626',
+      color: '#fff',
+      boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
+      transition: 'background 0.3s',
+    }}>
+      {isOnline
+        ? '✅ Back online! Syncing data...'
+        : '📴 You are offline — Cash & UPI payments still work'}
+    </div>
+  );
+}
 
 function AppInner() {
   const { user, logout, showToast } = useApp();
@@ -80,10 +129,11 @@ function AppInner() {
   const [activePage, setActivePage] = useState('/home');
   const [activeMenu, setActiveMenu] = useState(null);
 
-   // Public menu page - no login required
-    if (window.location.pathname.startsWith('/menu/')) {
-      return <MenuPublic />;
-    }
+  // Public menu page - no login required
+  if (window.location.pathname.startsWith('/menu/')) {
+    return <MenuPublic />;
+  }
+
   if (!user) return <Login />;
 
   const handleMenuChange = (menuurl, menuItem) => {
@@ -95,6 +145,7 @@ function AppInner() {
 
   return (
     <div className="app-layout">
+      <OfflineBanner />
       <Sidebar
         activePage={activePage}
         onChange={handleMenuChange}
@@ -110,14 +161,13 @@ function AppInner() {
 
 const BACKEND = 'https://currycloud.mooo.com';
 
-// Keep Railway backend awake — pings every 4 minutes
 function useKeepAlive() {
   useEffect(() => {
     const ping = () => fetch(`${BACKEND}/health`).catch(() =>
       fetch(`${BACKEND}/company/`).catch(() => {})
     );
-    ping(); // immediate ping on app load
-    const id = setInterval(ping, 4 * 60 * 1000); // every 4 min
+    ping();
+    const id = setInterval(ping, 4 * 60 * 1000);
     return () => clearInterval(id);
   }, []);
 }
