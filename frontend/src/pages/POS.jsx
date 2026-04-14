@@ -353,6 +353,34 @@ const loadMenu = useCallback(async () => {
   }, []);
 
   const syncOfflineOrders = async () => {
+    // Sync pending items added to existing online orders while offline
+    try {
+      const key = `rms_pending_items_${cid}`;
+      const pendingItems = JSON.parse(localStorage.getItem(key) || '[]');
+      if (pendingItems.length > 0) {
+        showToast(`🔄 Syncing ${pendingItems.length} pending item(s)...`);
+        const synced = [];
+        for (const item of pendingItems) {
+          try {
+            await posOrderAPI.addItem(item.order_id, cid, {
+              food_menu_id:  item.food_menu_id,
+              item_name:     item.item_name,
+              item_code:     item.item_code || '',
+              category_name: item.category_name || '',
+              unit_price:    item.unit_price,
+              quantity:      item.quantity,
+              is_veg:        item.is_veg !== false,
+            });
+            synced.push(item);
+          } catch(e) { console.error('Item sync failed:', e); }
+        }
+        // Remove synced items
+        const remaining = pendingItems.filter(i => !synced.includes(i));
+        localStorage.setItem(key, JSON.stringify(remaining));
+        if (synced.length > 0) showToast(`✅ ${synced.length} item(s) synced!`);
+      }
+    } catch {}
+
     // Sync existing online orders that were billed while offline
     try {
       const pendingBills = JSON.parse(localStorage.getItem(`rms_pending_bills_${cid}`) || '[]');
@@ -458,6 +486,10 @@ const loadMenu = useCallback(async () => {
     setSaving(true);
     const resetForm = () => { setOrderType('dine_in'); setSelectedTable(null); setCustName(''); setCustPhone(''); setCovers(2); setDeliveryAddr(''); setOrderCustPhone(''); setOrderCustLookup(null); };
 
+    // Clear previous bill state when creating new order
+    setBill(null);
+    setIsOfflineOrder(false);
+
     if (!isOnline) {
       // ── Offline order creation ──
       const order = createOfflineOrder({
@@ -514,9 +546,26 @@ const loadMenu = useCallback(async () => {
       return;
     }
 
-    // For online orders that are now offline — update local state only
+    // For online orders that are now offline — update local state AND save to pending queue
     if (!isOnline) {
-      showToast('📴 Offline — items will sync when internet returns', 'info');
+      showToast('📴 Offline — item added, will sync when online', 'info');
+      // Save to pending items queue for sync
+      try {
+        const key = `rms_pending_items_${cid}`;
+        const pendingItems = JSON.parse(localStorage.getItem(key) || '[]');
+        pendingItems.push({
+          order_id:      activeOrder.order_id,
+          food_menu_id:  menuItem.food_menu_id,
+          item_name:     menuItem.name,
+          item_code:     menuItem.code || '',
+          category_name: menuItem.category_name || '',
+          unit_price:    parseFloat(menuItem.sale_price || 0),
+          quantity:      1,
+          is_veg:        menuItem.is_veg !== false,
+        });
+        localStorage.setItem(key, JSON.stringify(pendingItems));
+      } catch {}
+      // Update local UI state
       setActiveOrder(prev => {
         if (!prev) return prev;
         const items = [...(prev.items || [])];
@@ -561,8 +610,33 @@ const loadMenu = useCallback(async () => {
       return;
     }
 
-    // For online orders that are now offline — update local state only
+    // For online orders that are now offline — update local state AND pending queue
     if (!isOnline) {
+      // Save qty change to pending items queue
+      try {
+        const key = `rms_pending_items_${cid}`;
+        const pendingItems = JSON.parse(localStorage.getItem(key) || '[]');
+        const ex = pendingItems.find(i => i.order_id === activeOrder.order_id && i.food_menu_id === item.food_menu_id);
+        if (ex) {
+          ex.quantity += delta;
+          if (ex.quantity <= 0) {
+            const idx = pendingItems.indexOf(ex);
+            pendingItems.splice(idx, 1);
+          }
+        } else if (delta > 0) {
+          pendingItems.push({
+            order_id:      activeOrder.order_id,
+            food_menu_id:  item.food_menu_id,
+            item_name:     item.item_name,
+            item_code:     item.item_code || '',
+            category_name: item.category_name || '',
+            unit_price:    parseFloat(item.unit_price || 0),
+            quantity:      delta,
+            is_veg:        item.is_veg !== false,
+          });
+        }
+        localStorage.setItem(key, JSON.stringify(pendingItems));
+      } catch {}
       setActiveOrder(prev => {
         if (!prev) return prev;
         const items = [...(prev.items || [])];
