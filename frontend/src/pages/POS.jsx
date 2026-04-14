@@ -1451,7 +1451,7 @@ ${company.hsn ? `<div class="center muted" style="margin-top:4px">HSN: ${company
             )}
             {isOfflineOrder && activeItems.length > 0 && (
               <button style={{ ...S.billBtn, background: 'linear-gradient(135deg,#856404,#b45309)' }} onClick={() => { setOfflineAmountPaid(total.toFixed(2)); setShowOfflineBillModal(true); }}>
-                🧾 Generate Offline Bill · ₹{subtotal.toFixed(2)}
+                🧾 Generate Offline Bill · ₹{total.toFixed(2)}
               </button>
             )}
             {!isLocked && !isOfflineOrder && (
@@ -1484,14 +1484,26 @@ ${company.hsn ? `<div class="center muted" style="margin-top:4px">HSN: ${company
 
             {/* Bill details if billed */}
             {bill && (
-              <div style={{ background: '#f0fdf4', border: '1px solid #a7f3d0', borderRadius: 10, padding: '10px 14px', marginTop: 8 }}>
+              <div style={{ background: bill.is_offline ? '#fff9e6' : '#f0fdf4', border: `1px solid ${bill.is_offline ? '#ffc107' : '#a7f3d0'}`, borderRadius: 10, padding: '10px 14px', marginTop: 8 }}>
+                {bill.is_offline && (
+                  <div style={{ fontSize: 11, color: '#856404', fontWeight: 600, marginBottom: 6 }}>
+                    📴 Offline Bill — will sync to server when internet restored
+                  </div>
+                )}
                 <div style={{ fontWeight: 700, color: 'var(--primary)', marginBottom: 4 }}>🧾 {bill.bill_number}</div>
                 <div style={{ fontSize: 12, color: 'var(--text-2)', display: 'flex', gap: 16 }}>
                   <span>Payment: <strong>{bill.payment_method?.toUpperCase()}</strong></span>
-                  <span>Paid: <strong>₹{parseFloat(bill.amount_paid).toFixed(2)}</strong></span>
-                  <span>Prints: {bill.print_count}</span>
+                  <span>Paid: <strong>₹{parseFloat(bill.amount_paid || 0).toFixed(2)}</strong></span>
+                  {!bill.is_offline && <span>Prints: {bill.print_count}</span>}
                 </div>
                 <button style={{ ...S.smallBtn, marginTop: 6 }} onClick={async () => {
+                  if (bill.is_offline) {
+                    // Reprint offline bill
+                    const offlineOrder = bill._offlineOrder || bill._billData;
+                    if (offlineOrder) printOfflineBill(offlineOrder, selectedCompany || {});
+                    else showToast('Cannot reprint — bill data not found', 'error');
+                    return;
+                  }
                   try {
                     const freshBill = await posBillAPI.print(bill.bill_id);
                     await loadOrderDetail(activeOrder.order_id);
@@ -1504,6 +1516,12 @@ ${company.hsn ? `<div class="center muted" style="margin-top:4px">HSN: ${company
                   } catch(e) { showToast(e.message, 'error'); }
                 }}>🖨️ Reprint Bill</button>
                 <button style={{ ...S.smallBtn, marginTop: 4, background: '#1a3a1c', color: '#a3e6a3' }} onClick={async () => {
+                  if (bill.is_offline) {
+                    const offlineOrder = bill._offlineOrder || bill._billData;
+                    if (offlineOrder) printOfflineBill(offlineOrder, selectedCompany || {});
+                    else showToast('Cannot print — bill data not found', 'error');
+                    return;
+                  }
                   if (!selectedCompany) return;
                   try {
                     const freshBill = await posBillAPI.getById(bill.bill_id);
@@ -2145,8 +2163,18 @@ ${company.hsn ? `<div class="center muted" style="margin-top:4px">HSN: ${company
                       printOfflineBill(updated, selectedCompany || {});
                       showToast('🧾 Offline bill generated & printed!');
                       setShowOfflineBillModal(false);
-                      setActiveOrder(null);
-                      setIsOfflineOrder(false);
+                      // Show bill details in center panel instead of going blank
+                      setActiveOrder({ ...updated, order_status: 'billed', items: updated.items || [] });
+                      setBill({
+                        bill_number:    updated.order_number + '-OFFLINE',
+                        payment_method: updated.payment_method,
+                        amount_paid:    updated.amount_paid,
+                        print_count:    1,
+                        is_offline:     true,
+                        _offlineOrder:  updated,
+                      });
+                      // Remove from running orders
+                      setOrders(prev => prev.filter(o => o.offline_id !== updated.offline_id && o.order_id !== updated.order_id));
                       loadOrders();
                     }
                   } else {
@@ -2186,13 +2214,22 @@ ${company.hsn ? `<div class="center muted" style="margin-top:4px">HSN: ${company
                     printOfflineBill(billData, selectedCompany || {});
                     showToast('🧾 Bill printed! Will auto-sync when online.');
                     setShowOfflineBillModal(false);
+                    // Show bill details in center panel
+                    setActiveOrder(prev => prev ? { ...prev, order_status: 'billed' } : prev);
+                    setBill({
+                      bill_number:    billData.order_number + '-OFFLINE',
+                      payment_method: offlinePayMethod,
+                      amount_paid:    paid,
+                      print_count:    1,
+                      is_offline:     true,
+                      _billData:      billData,
+                    });
                     // Remove from running orders UI and cache
                     setOrders(prev => prev.filter(o => o.order_id !== activeOrder?.order_id));
                     try {
                       const cached = JSON.parse(localStorage.getItem(`rms_running_orders_${cid}`) || '[]');
                       localStorage.setItem(`rms_running_orders_${cid}`, JSON.stringify(cached.filter(o => o.order_id !== activeOrder?.order_id)));
                     } catch {}
-                    setActiveOrder(null);
                   }
                 }}>
                 🖨️ Print & Done
