@@ -122,7 +122,12 @@ export const printOfflineBill = (order, company = {}) => {
   if (!w) return;
   const items    = order.items || [];
   const subtotal = order.subtotal || 0;
-  const total    = order.total_payable || subtotal;
+  const surcharge = parseFloat(order.surcharge || 0);
+  const sgstAmt  = parseFloat(order.sgst_amount || 0);
+  const cgstAmt  = parseFloat(order.cgst_amount || 0);
+  const sgstRate = parseFloat(order.sgst_rate || 0);
+  const cgstRate = parseFloat(order.cgst_rate || 0);
+  const total    = order.total_payable || (subtotal + surcharge + sgstAmt + cgstAmt);
   const now      = new Date().toLocaleString('en-IN');
   w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8">
 <title>Offline Bill</title>
@@ -154,6 +159,11 @@ ${order.customer_name ? `<div class="row"><span class="bold">Customer:</span><sp
 <div class="line"></div>
 <div class="bold" style="margin-bottom:6px">ITEMS</div>
 ${items.map(it => `<div class="row"><span>${it.is_veg === false ? '🔴' : '🟢'} ${it.item_name} x${it.quantity}</span><span>₹${(it.unit_price * it.quantity).toFixed(0)}</span></div>`).join('')}
+<div class="line"></div>
+<div class="row"><span>Subtotal</span><span>₹${subtotal.toFixed(0)}</span></div>
+${surcharge > 0 ? `<div class="row"><span>Table Surcharge</span><span>+₹${surcharge.toFixed(2)}</span></div>` : ''}
+${sgstAmt > 0 ? `<div class="row"><span>SGST (${sgstRate}%)</span><span>+₹${sgstAmt.toFixed(2)}</span></div>` : ''}
+${cgstAmt > 0 ? `<div class="row"><span>CGST (${cgstRate}%)</span><span>+₹${cgstAmt.toFixed(2)}</span></div>` : ''}
 <div class="line"></div>
 <div class="row total-row"><span>TOTAL</span><span>₹${total.toFixed(2)}</span></div>
 <div class="row"><span>Amount Paid</span><span>₹${parseFloat(order.amount_paid || total).toFixed(2)}</span></div>

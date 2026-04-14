@@ -1353,14 +1353,14 @@ ${company.hsn ? `<div class="center muted" style="margin-top:4px">HSN: ${company
               </div>
             )}
             {isOfflineOrder && activeItems.length > 0 && (
-              <button style={{ ...S.billBtn, background: 'linear-gradient(135deg,#856404,#b45309)' }} onClick={() => { setOfflineAmountPaid(subtotal.toFixed(2)); setShowOfflineBillModal(true); }}>
+              <button style={{ ...S.billBtn, background: 'linear-gradient(135deg,#856404,#b45309)' }} onClick={() => { setOfflineAmountPaid(total.toFixed(2)); setShowOfflineBillModal(true); }}>
                 🧾 Generate Offline Bill · ₹{subtotal.toFixed(2)}
               </button>
             )}
             {!isLocked && !isOfflineOrder && (
               <button style={S.billBtn} onClick={() => {
                 if (!isOnline) {
-                  setOfflineAmountPaid(subtotal.toFixed(2));
+                  setOfflineAmountPaid(total.toFixed(2));
                   setOfflinePayMethod('cash');
                   setShowOfflineBillModal(true);
                 } else {
@@ -1999,8 +1999,14 @@ ${company.hsn ? `<div class="center muted" style="margin-top:4px">HSN: ${company
                   <span>₹{(parseFloat(item.unit_price || item.sale_price || 0) * item.quantity).toFixed(0)}</span>
                 </div>
               ))}
-              <div style={{ display:'flex', justifyContent:'space-between', fontWeight:700, fontSize:16, borderTop:'1px solid var(--border)', paddingTop:8, marginTop:8 }}>
-                <span>Total</span><span style={{ color:'var(--primary)' }}>₹{subtotal.toFixed(2)}</span>
+              <div style={{ borderTop:'1px solid var(--border)', paddingTop:8, marginTop:8 }}>
+                <div style={{ display:'flex', justifyContent:'space-between', fontSize:13, marginBottom:4 }}><span>Subtotal</span><span>₹{subtotal.toFixed(2)}</span></div>
+                {surcharge > 0 && <div style={{ display:'flex', justifyContent:'space-between', fontSize:13, marginBottom:4, color:'#92400e' }}><span>{activeOrder?.table_surcharge_label || 'Table Surcharge'}</span><span>+₹{surcharge.toFixed(2)}</span></div>}
+                {sgstAmt > 0 && <div style={{ display:'flex', justifyContent:'space-between', fontSize:13, marginBottom:4, color:'#1e40af' }}><span>SGST ({sgstRate}%)</span><span>+₹{sgstAmt.toFixed(2)}</span></div>}
+                {cgstAmt > 0 && <div style={{ display:'flex', justifyContent:'space-between', fontSize:13, marginBottom:4, color:'#1e40af' }}><span>CGST ({cgstRate}%)</span><span>+₹{cgstAmt.toFixed(2)}</span></div>}
+                <div style={{ display:'flex', justifyContent:'space-between', fontWeight:700, fontSize:16, borderTop:'1px solid var(--border)', paddingTop:8, marginTop:4 }}>
+                  <span>Total</span><span style={{ color:'var(--primary)' }}>₹{total.toFixed(2)}</span>
+                </div>
               </div>
             </div>
             <div style={{ marginBottom:14 }}>
@@ -2017,9 +2023,9 @@ ${company.hsn ? `<div class="center muted" style="margin-top:4px">HSN: ${company
             <div style={{ marginBottom:16 }}>
               <label style={S.label}>Amount Received (₹)</label>
               <input type="number" value={offlineAmountPaid} onChange={e => setOfflineAmountPaid(e.target.value)} style={S.input} />
-              {parseFloat(offlineAmountPaid) > subtotal && (
+              {parseFloat(offlineAmountPaid) > total && (
                 <div style={{ marginTop:6, fontSize:13, color:'var(--primary)', fontWeight:600 }}>
-                  Change: ₹{(parseFloat(offlineAmountPaid) - subtotal).toFixed(2)}
+                  Change: ₹{(parseFloat(offlineAmountPaid) - total).toFixed(2)}
                 </div>
               )}
             </div>
@@ -2040,7 +2046,7 @@ ${company.hsn ? `<div class="center muted" style="margin-top:4px">HSN: ${company
                       loadOrders();
                     }
                   } else {
-                    // Online order — use the offline bill print for now, then sync
+                    // Online order — print offline receipt with correct total
                     const billData = {
                       order_number:   activeOrder?.order_number,
                       order_type:     activeOrder?.order_type,
@@ -2050,11 +2056,19 @@ ${company.hsn ? `<div class="center muted" style="margin-top:4px">HSN: ${company
                       amount_paid:    paid,
                       items:          activeItems.map(i => ({ item_name: i.item_name, quantity: i.quantity, unit_price: parseFloat(i.unit_price), is_veg: i.is_veg })),
                       subtotal,
-                      total_payable:  subtotal,
+                      surcharge,
+                      sgst_amount:    sgstAmt,
+                      cgst_amount:    cgstAmt,
+                      sgst_rate:      sgstRate,
+                      cgst_rate:      cgstRate,
+                      total_payable:  total,
                     };
                     printOfflineBill(billData, selectedCompany || {});
-                    showToast('🧾 Bill printed! Will sync when online.');
+                    showToast('🧾 Bill printed! Sync to server when online.');
                     setShowOfflineBillModal(false);
+                    // Remove from running orders list
+                    setOrders(prev => prev.filter(o => o.order_id !== activeOrder?.order_id));
+                    setActiveOrder(null);
                   }
                 }}>
                 🖨️ Print & Done
