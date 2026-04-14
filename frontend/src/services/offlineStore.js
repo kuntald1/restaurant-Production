@@ -94,7 +94,7 @@ export const removeItemFromOfflineOrder = (offlineId, food_menu_id) => {
   return order;
 };
 
-export const markOfflineOrderBilled = (offlineId, paymentMethod, amountPaid) => {
+export const markOfflineOrderBilled = (offlineId, paymentMethod, amountPaid, extra = {}) => {
   const orders = getOfflineOrders();
   const order  = orders.find(o => o.offline_id === offlineId);
   if (!order) return null;
@@ -102,6 +102,13 @@ export const markOfflineOrderBilled = (offlineId, paymentMethod, amountPaid) => 
   order.payment_method = paymentMethod;
   order.amount_paid    = amountPaid;
   order.billed_at      = new Date().toISOString();
+  // Store extra info for server sync
+  if (extra.surcharge)   order.surcharge   = extra.surcharge;
+  if (extra.sgst_amount) order.sgst_amount = extra.sgst_amount;
+  if (extra.cgst_amount) order.cgst_amount = extra.cgst_amount;
+  if (extra.sgst_rate)   order.sgst_rate   = extra.sgst_rate;
+  if (extra.cgst_rate)   order.cgst_rate   = extra.cgst_rate;
+  if (extra.total)       order.total_payable = extra.total;
   saveOfflineOrders(orders);
   return order;
 };

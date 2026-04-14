@@ -348,23 +348,58 @@ const loadMenu = useCallback(async () => {
     let synced = 0;
     for (const order of pending) {
       try {
+        // Step 1 — Create order on server
         const serverOrder = await posOrderAPI.create({
-          company_unique_id: order.company_unique_id, order_type: order.order_type,
-          table_id: order.table_id || undefined, covers: order.covers || 1,
-          customer_name: order.customer_name || '', customer_phone: order.customer_phone || '',
-          created_by: order.created_by || null,
+          company_unique_id: order.company_unique_id,
+          order_type:        order.order_type,
+          table_id:          order.table_id || undefined,
+          covers:            order.covers || 1,
+          customer_name:     order.customer_name || '',
+          customer_phone:    order.customer_phone || '',
+          created_by:        order.created_by || null,
         });
+
+        // Step 2 — Add all items
         for (const item of order.items || []) {
           await posOrderAPI.addItem(serverOrder.order_id, order.company_unique_id, {
-            food_menu_id: item.food_menu_id, item_name: item.item_name,
-            item_code: item.item_code || '', category_name: item.category_name || '',
-            unit_price: item.unit_price, quantity: item.quantity, is_veg: item.is_veg !== false,
+            food_menu_id:  item.food_menu_id,
+            item_name:     item.item_name,
+            item_code:     item.item_code || '',
+            category_name: item.category_name || '',
+            unit_price:    item.unit_price,
+            quantity:      item.quantity,
+            is_veg:        item.is_veg !== false,
           });
         }
-        markOfflineOrderSynced(order.offline_id); synced++;
+
+        // Step 3 — If order was billed offline, generate bill on server too
+        if (order.order_status === 'billed' && order.payment_method) {
+          try {
+            await posBillAPI.generate({
+              order_id:          serverOrder.order_id,
+              company_unique_id: order.company_unique_id,
+              payment_method:    order.payment_method,
+              amount_paid:       parseFloat(order.amount_paid || order.total_payable || 0),
+              discount_amount:   0,
+              service_charge:    parseFloat(order.surcharge || 0),
+              sgst_amount:       parseFloat(order.sgst_amount || 0),
+              cgst_amount:       parseFloat(order.cgst_amount || 0),
+              created_by:        order.created_by || null,
+            });
+          } catch(billErr) {
+            console.error('Bill sync failed for order:', serverOrder.order_id, billErr);
+          }
+        }
+
+        markOfflineOrderSynced(order.offline_id);
+        synced++;
       } catch(e) { console.error('Sync failed:', order.offline_id, e); }
     }
-    if (synced > 0) { showToast(`✅ ${synced} offline order(s) synced!`); loadOrders(); }
+    if (synced > 0) {
+      showToast(`✅ ${synced} offline order(s) fully synced to server!`);
+      loadOrders();
+      loadTables();
+    }
   };
 
   const refresh = async () => {
@@ -2035,8 +2070,15 @@ ${company.hsn ? `<div class="center muted" style="margin-top:4px">HSN: ${company
                 onClick={() => {
                   const paid = parseFloat(offlineAmountPaid) || subtotal;
                   if (isOfflineOrder) {
-                    // Offline order — save locally and print
-                    const updated = markOfflineOrderBilled(activeOrder.offline_id, offlinePayMethod, paid);
+                    // Offline order — save locally and print (with full amounts for server sync)
+                    const updated = markOfflineOrderBilled(activeOrder.offline_id, offlinePayMethod, paid, {
+                      surcharge:   surcharge,
+                      sgst_amount: sgstAmt,
+                      cgst_amount: cgstAmt,
+                      sgst_rate:   sgstRate,
+                      cgst_rate:   cgstRate,
+                      total:       total,
+                    });
                     if (updated) {
                       printOfflineBill(updated, selectedCompany || {});
                       showToast('🧾 Offline bill generated & printed!');
