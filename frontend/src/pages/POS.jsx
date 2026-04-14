@@ -1,7 +1,13 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useApp } from '../context/useApp';
 import { posTableAPI, posOrderAPI, posKotAPI, posBillAPI, foodMenuAPI, foodCategoryAPI, qrAPI, paymentTransactionAPI, crmCustomerAPI, crmPromoAPI, smsSettingsAPI, paymentLinkAPI } from '../services/api';
-import { cacheMenu, cacheCategories, cacheTables, getCachedMenu, getCachedCategories, getCachedTables } from '../services/offlineStore';
+import {
+  cacheMenu, cacheCategories, cacheTables,
+  getCachedMenu, getCachedCategories, getCachedTables,
+  createOfflineOrder, addItemToOfflineOrder, removeItemFromOfflineOrder,
+  markOfflineOrderBilled, printOfflineBill,
+  getUnsyncedOfflineOrders, markOfflineOrderSynced,
+} from '../services/offlineStore';
 
 const STATUS_META = {
   draft:                       { label: 'Draft',       bg: '#f3f4f6', color: '#374151' },
@@ -246,6 +252,13 @@ export default function POS({ onNavigate }) {
   const [covers,     setCovers]     = useState(2);
   const [deliveryAddr, setDeliveryAddr] = useState('');
 
+  // ── Offline state ─────────────────────────────────────────
+  const [isOnline,             setIsOnline]             = useState(navigator.onLine);
+  const [isOfflineOrder,       setIsOfflineOrder]       = useState(false);
+  const [showOfflineBillModal, setShowOfflineBillModal] = useState(false);
+  const [offlinePayMethod,     setOfflinePayMethod]     = useState('cash');
+  const [offlineAmountPaid,    setOfflineAmountPaid]    = useState('');
+
   // ── Load data ─────────────────────────────────────────────
 const loadTables = useCallback(async () => {
   if (!cid) return;
@@ -308,6 +321,41 @@ const loadMenu = useCallback(async () => {
     loadTables(); loadOrders(); loadMenu();
   }, [cid]);
 
+  // ── Online/Offline detection + auto-sync ──────────────────
+  useEffect(() => {
+    const goOffline = () => setIsOnline(false);
+    const goOnline  = () => { setIsOnline(true); syncOfflineOrders(); };
+    window.addEventListener('offline', goOffline);
+    window.addEventListener('online',  goOnline);
+    return () => { window.removeEventListener('offline', goOffline); window.removeEventListener('online', goOnline); };
+  }, []);
+
+  const syncOfflineOrders = async () => {
+    const pending = getUnsyncedOfflineOrders();
+    if (!pending.length) return;
+    showToast(`🔄 Syncing ${pending.length} offline order(s)...`);
+    let synced = 0;
+    for (const order of pending) {
+      try {
+        const serverOrder = await posOrderAPI.create({
+          company_unique_id: order.company_unique_id, order_type: order.order_type,
+          table_id: order.table_id || undefined, covers: order.covers || 1,
+          customer_name: order.customer_name || '', customer_phone: order.customer_phone || '',
+          created_by: order.created_by || null,
+        });
+        for (const item of order.items || []) {
+          await posOrderAPI.addItem(serverOrder.order_id, order.company_unique_id, {
+            food_menu_id: item.food_menu_id, item_name: item.item_name,
+            item_code: item.item_code || '', category_name: item.category_name || '',
+            unit_price: item.unit_price, quantity: item.quantity, is_veg: item.is_veg !== false,
+          });
+        }
+        markOfflineOrderSynced(order.offline_id); synced++;
+      } catch(e) { console.error('Sync failed:', order.offline_id, e); }
+    }
+    if (synced > 0) { showToast(`✅ ${synced} offline order(s) synced!`); loadOrders(); }
+  };
+
   const refresh = async () => {
     await Promise.all([loadTables(), loadOrders()]);
     if (activeOrder) await loadOrderDetail(activeOrder.order_id);
@@ -328,6 +376,29 @@ const loadMenu = useCallback(async () => {
   // ── Create order ──────────────────────────────────────────
   const createOrder = async () => {
     setSaving(true);
+    const resetForm = () => { setOrderType('dine_in'); setSelectedTable(null); setCustName(''); setCustPhone(''); setCovers(2); setDeliveryAddr(''); setOrderCustPhone(''); setOrderCustLookup(null); };
+
+    if (!isOnline) {
+      // ── Offline order creation ──
+      const order = createOfflineOrder({
+        company_unique_id: cid,
+        order_type: orderType,
+        table_id:   orderType === 'dine_in' && selectedTable ? selectedTable.table_id : null,
+        table_name: orderType === 'dine_in' && selectedTable ? selectedTable.table_name : null,
+        covers:     parseInt(covers) || 1,
+        customer_name:  orderType !== 'dine_in' ? (custName || '') : '',
+        customer_phone: orderType !== 'dine_in' ? (custPhone || '') : '',
+        created_by: user?.user_id || null,
+      });
+      setActiveOrder(order);
+      setIsOfflineOrder(true);
+      setModal(null);
+      showToast('📴 Offline order created — syncs when online');
+      resetForm();
+      setSaving(false);
+      return;
+    }
+
     try {
       const payload = {
         company_unique_id: cid,
@@ -340,12 +411,12 @@ const loadMenu = useCallback(async () => {
       if (orderType === 'delivery') payload.delivery_address = deliveryAddr;
 
       const order = await posOrderAPI.create(payload);
+      setIsOfflineOrder(false);
       await refresh();
       setModal(null);
       await loadOrderDetail(order.order_id);
       showToast(`Order ${order.order_number} created!`);
-      // reset form
-      setOrderType('dine_in'); setSelectedTable(null); setCustName(''); setCustPhone(''); setCovers(2); setDeliveryAddr(''); setOrderCustPhone(''); setOrderCustLookup(null);
+      resetForm();
     } catch (e) { showToast(e.message, 'error'); }
     setSaving(false);
   };
@@ -356,6 +427,12 @@ const loadMenu = useCallback(async () => {
     const st = activeOrder.order_status;
     if (st === 'billed' || st === 'cancelled') { showToast('Order is locked', 'error'); return; }
     if (st === 'kot_inprocess') { showToast('Kitchen is cooking — cannot add items', 'error'); return; }
+
+    if (isOfflineOrder) {
+      const updated = addItemToOfflineOrder(activeOrder.offline_id, menuItem);
+      if (updated) setActiveOrder({ ...updated });
+      return;
+    }
 
     try {
       await posOrderAPI.addItem(activeOrder.order_id, cid, {
@@ -378,6 +455,17 @@ const loadMenu = useCallback(async () => {
     const st = activeOrder.order_status;
     if (st === 'billed' || st === 'cancelled') return;
     if (item.kot_item_status === 'kot_inprocess') { showToast(`"${item.item_name}" is being cooked`, 'error'); return; }
+
+    if (isOfflineOrder) {
+      if (delta > 0) {
+        const updated = addItemToOfflineOrder(activeOrder.offline_id, { ...item, food_menu_id: item.food_menu_id, name: item.item_name, sale_price: item.unit_price });
+        if (updated) setActiveOrder({ ...updated });
+      } else {
+        const updated = removeItemFromOfflineOrder(activeOrder.offline_id, item.food_menu_id);
+        if (updated) setActiveOrder({ ...updated });
+      }
+      return;
+    }
 
     const newQty = item.quantity + delta;
     try {
@@ -943,8 +1031,10 @@ ${company.hsn ? `<div class="center muted" style="margin-top:4px">HSN: ${company
   };
 
   // ── Computed ──────────────────────────────────────────────
-  const activeItems  = (activeOrder?.items || []).filter(i => !i.is_cancelled);
-  const subtotal     = activeItems.reduce((s, i) => s + parseFloat(i.unit_price) * i.quantity, 0);
+  const activeItems  = isOfflineOrder
+    ? (activeOrder?.items || [])
+    : (activeOrder?.items || []).filter(i => !i.is_cancelled);
+  const subtotal     = activeItems.reduce((s, i) => s + parseFloat(i.unit_price || i.sale_price || 0) * i.quantity, 0);
   // Surcharge: from order snapshot, or from the selected table
   const surcharge = parseFloat(
     activeOrder?.table_surcharge_amount ||
@@ -1224,8 +1314,15 @@ ${company.hsn ? `<div class="center muted" style="margin-top:4px">HSN: ${company
               </div>
             </div>
 
+            {/* Offline order badge */}
+            {isOfflineOrder && (
+              <div style={{ background:'#fff3cd', border:'1px solid #ffc107', borderRadius:8, padding:'8px 12px', fontSize:12, color:'#856404', fontWeight:600, marginTop:4 }}>
+                📴 Offline Order — will sync to server when internet is restored
+              </div>
+            )}
+
             {/* Action buttons */}
-            {!isLocked && (
+            {!isLocked && !isOfflineOrder && (
               <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
                 <button style={S.cancelBtn} onClick={cancelOrder}>✕ Cancel</button>
                 <button style={S.holdBtn} onClick={() => holdOrder(!activeOrder.is_hold)}>
@@ -1233,7 +1330,12 @@ ${company.hsn ? `<div class="center muted" style="margin-top:4px">HSN: ${company
                 </button>
               </div>
             )}
-            {!isLocked && (
+            {isOfflineOrder && activeItems.length > 0 && (
+              <button style={{ ...S.billBtn, background: 'linear-gradient(135deg,#856404,#b45309)' }} onClick={() => { setOfflineAmountPaid(subtotal.toFixed(2)); setShowOfflineBillModal(true); }}>
+                🧾 Generate Offline Bill · ₹{subtotal.toFixed(2)}
+              </button>
+            )}
+            {!isLocked && !isOfflineOrder && (
               <button style={S.billBtn} onClick={() => { setAmountPaid(total.toFixed(2)); setModal('bill'); }} disabled={activeItems.length === 0}>
                 🧾 Generate Bill · ₹{total.toFixed(2)}
               </button>
@@ -1843,6 +1945,70 @@ ${company.hsn ? `<div class="center muted" style="margin-top:4px">HSN: ${company
                   {saving ? 'Generating…' : '🧾 Generate Bill'}
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── OFFLINE BILL MODAL ── */}
+      {showOfflineBillModal && isOfflineOrder && (
+        <div style={S.overlay} onClick={() => setShowOfflineBillModal(false)}>
+          <div style={{ ...S.modalBox, maxWidth: 400 }} onClick={e => e.stopPropagation()}>
+            <div style={S.modalHead}>
+              <span style={{ fontWeight:700, fontSize:17 }}>🧾 Offline Bill</span>
+              <button style={S.closeBtn} onClick={() => setShowOfflineBillModal(false)}>✕</button>
+            </div>
+            <div style={{ background:'#fff3cd', border:'1px solid #ffc107', borderRadius:8, padding:'8px 12px', marginBottom:14, fontSize:13, color:'#856404' }}>
+              📴 Offline Bill — will sync to server when internet is restored
+            </div>
+            <div style={{ background:'var(--bg)', borderRadius:8, padding:12, marginBottom:14 }}>
+              {activeItems.map(item => (
+                <div key={item.food_menu_id || item.order_item_id} style={{ display:'flex', justifyContent:'space-between', fontSize:13, marginBottom:4 }}>
+                  <span>{item.item_name || item.name} x{item.quantity}</span>
+                  <span>₹{(parseFloat(item.unit_price || item.sale_price || 0) * item.quantity).toFixed(0)}</span>
+                </div>
+              ))}
+              <div style={{ display:'flex', justifyContent:'space-between', fontWeight:700, fontSize:16, borderTop:'1px solid var(--border)', paddingTop:8, marginTop:8 }}>
+                <span>Total</span><span style={{ color:'var(--primary)' }}>₹{subtotal.toFixed(2)}</span>
+              </div>
+            </div>
+            <div style={{ marginBottom:14 }}>
+              <label style={S.label}>Payment Method</label>
+              <div style={{ display:'flex', gap:8 }}>
+                {[['cash','💵 Cash'],['upi','📲 UPI']].map(([id,label]) => (
+                  <button key={id}
+                    style={{ flex:1, padding:'10px', border:`2px solid ${offlinePayMethod===id?'var(--primary)':'var(--border)'}`, borderRadius:8, background:offlinePayMethod===id?'var(--primary-light)':'var(--white)', color:offlinePayMethod===id?'var(--primary)':'var(--text-2)', fontWeight:offlinePayMethod===id?700:400, cursor:'pointer', fontSize:13 }}
+                    onClick={() => setOfflinePayMethod(id)}>{label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div style={{ marginBottom:16 }}>
+              <label style={S.label}>Amount Received (₹)</label>
+              <input type="number" value={offlineAmountPaid} onChange={e => setOfflineAmountPaid(e.target.value)} style={S.input} />
+              {parseFloat(offlineAmountPaid) > subtotal && (
+                <div style={{ marginTop:6, fontSize:13, color:'var(--primary)', fontWeight:600 }}>
+                  Change: ₹{(parseFloat(offlineAmountPaid) - subtotal).toFixed(2)}
+                </div>
+              )}
+            </div>
+            <div style={{ display:'flex', gap:8, justifyContent:'flex-end' }}>
+              <button style={S.cancelBtn} onClick={() => setShowOfflineBillModal(false)}>Cancel</button>
+              <button style={{ ...S.primaryBtn, background:'linear-gradient(135deg,var(--green-700),var(--green-500))', border:'none' }}
+                onClick={() => {
+                  const paid = parseFloat(offlineAmountPaid) || subtotal;
+                  const updated = markOfflineOrderBilled(activeOrder.offline_id, offlinePayMethod, paid);
+                  if (updated) {
+                    printOfflineBill(updated, selectedCompany || {});
+                    showToast('🧾 Offline bill generated & printed!');
+                    setShowOfflineBillModal(false);
+                    setActiveOrder(null);
+                    setIsOfflineOrder(false);
+                    loadOrders();
+                  }
+                }}>
+                🖨️ Print & Done
+              </button>
             </div>
           </div>
         </div>
