@@ -302,19 +302,30 @@ const loadMenu = useCallback(async () => {
   }
 }, [cid]);
 
-  const loadOrderDetail = useCallback(async (orderId) => {
+  const loadOrderDetail = useCallback(async (orderId, fallbackOrder = null) => {
     try {
       const [order, kts] = await Promise.all([
         posOrderAPI.getById(orderId),
         posKotAPI.getByOrder(orderId),
       ]);
       setActiveOrder(order);
+      setIsOfflineOrder(false);
       setKots(kts || []);
-      // load bill if billed
       if (order.order_status === 'billed') {
         try { setBill(await posBillAPI.getByOrder(orderId)); } catch { setBill(null); }
       } else { setBill(null); }
-    } catch (e) { showToast(e.message, 'error'); }
+    } catch (e) {
+      // If offline, use the fallback order data from the running orders list
+      if (fallbackOrder) {
+        setActiveOrder(fallbackOrder);
+        setIsOfflineOrder(false);
+        setKots([]);
+        setBill(null);
+        showToast('📴 Showing cached order data (offline)', 'info');
+      } else {
+        showToast('📴 Cannot load order details while offline', 'error');
+      }
+    }
   }, []);
 
   useEffect(() => {
@@ -370,7 +381,8 @@ const loadMenu = useCallback(async () => {
     setBillCustomerId(null);
     setHeaderCustomer(null);
     setDiscount(0); setAmountPaid(''); setPayRef(''); setPayMethod('cash');
-    await loadOrderDetail(order.order_id);
+    // Pass the order object as fallback for offline use
+    await loadOrderDetail(order.order_id, order);
   };
 
   // ── Create order ──────────────────────────────────────────
@@ -961,6 +973,16 @@ ${company.hsn ? `<div class="center muted" style="margin-top:4px">HSN: ${company
   // ── Generate Bill ─────────────────────────────────────────
   const generateBill = async () => {
     if (!activeOrder) return;
+
+    // ── If offline — show offline bill modal instead ──
+    if (!isOnline) {
+      setModal(null);
+      setOfflineAmountPaid(subtotal.toFixed(2));
+      setOfflinePayMethod(payMethod === 'cash' ? 'cash' : 'upi');
+      setShowOfflineBillModal(true);
+      return;
+    }
+
     setSaving(true);
     try {
       const paid = parseFloat(amountPaid) || 0;
@@ -1336,7 +1358,16 @@ ${company.hsn ? `<div class="center muted" style="margin-top:4px">HSN: ${company
               </button>
             )}
             {!isLocked && !isOfflineOrder && (
-              <button style={S.billBtn} onClick={() => { setAmountPaid(total.toFixed(2)); setModal('bill'); }} disabled={activeItems.length === 0}>
+              <button style={S.billBtn} onClick={() => {
+                if (!isOnline) {
+                  setOfflineAmountPaid(subtotal.toFixed(2));
+                  setOfflinePayMethod('cash');
+                  setShowOfflineBillModal(true);
+                } else {
+                  setAmountPaid(total.toFixed(2));
+                  setModal('bill');
+                }
+              }} disabled={activeItems.length === 0}>
                 🧾 Generate Bill · ₹{total.toFixed(2)}
               </button>
             )}
@@ -1951,7 +1982,7 @@ ${company.hsn ? `<div class="center muted" style="margin-top:4px">HSN: ${company
       )}
 
       {/* ── OFFLINE BILL MODAL ── */}
-      {showOfflineBillModal && isOfflineOrder && (
+      {showOfflineBillModal && (
         <div style={S.overlay} onClick={() => setShowOfflineBillModal(false)}>
           <div style={{ ...S.modalBox, maxWidth: 400 }} onClick={e => e.stopPropagation()}>
             <div style={S.modalHead}>
@@ -1997,14 +2028,33 @@ ${company.hsn ? `<div class="center muted" style="margin-top:4px">HSN: ${company
               <button style={{ ...S.primaryBtn, background:'linear-gradient(135deg,var(--green-700),var(--green-500))', border:'none' }}
                 onClick={() => {
                   const paid = parseFloat(offlineAmountPaid) || subtotal;
-                  const updated = markOfflineOrderBilled(activeOrder.offline_id, offlinePayMethod, paid);
-                  if (updated) {
-                    printOfflineBill(updated, selectedCompany || {});
-                    showToast('🧾 Offline bill generated & printed!');
+                  if (isOfflineOrder) {
+                    // Offline order — save locally and print
+                    const updated = markOfflineOrderBilled(activeOrder.offline_id, offlinePayMethod, paid);
+                    if (updated) {
+                      printOfflineBill(updated, selectedCompany || {});
+                      showToast('🧾 Offline bill generated & printed!');
+                      setShowOfflineBillModal(false);
+                      setActiveOrder(null);
+                      setIsOfflineOrder(false);
+                      loadOrders();
+                    }
+                  } else {
+                    // Online order — use the offline bill print for now, then sync
+                    const billData = {
+                      order_number:   activeOrder?.order_number,
+                      order_type:     activeOrder?.order_type,
+                      table_name:     activeOrder?.table_name,
+                      customer_name:  activeOrder?.customer_name,
+                      payment_method: offlinePayMethod,
+                      amount_paid:    paid,
+                      items:          activeItems.map(i => ({ item_name: i.item_name, quantity: i.quantity, unit_price: parseFloat(i.unit_price), is_veg: i.is_veg })),
+                      subtotal,
+                      total_payable:  subtotal,
+                    };
+                    printOfflineBill(billData, selectedCompany || {});
+                    showToast('🧾 Bill printed! Will sync when online.');
                     setShowOfflineBillModal(false);
-                    setActiveOrder(null);
-                    setIsOfflineOrder(false);
-                    loadOrders();
                   }
                 }}>
                 🖨️ Print & Done
