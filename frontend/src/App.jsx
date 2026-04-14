@@ -30,6 +30,8 @@ import SmsSettings    from './pages/SmsSettings';
 import WhatsAppSettings from './pages/WhatsAppSettings';
 import GenericPage from './pages/GenericPage';
 import DineIn from './pages/DineIn';
+import MenuPublic from './pages/MenuPublic';
+import QRGenerator from './pages/QRGenerator';
 
 const URL_TO_PAGE = {
   '/home':                        Dashboard,
@@ -67,7 +69,9 @@ const URL_TO_PAGE = {
   '/crm/campaigns':               CrmCampaigns,
   '/payment-methods':             PaymentMethods,
   '/pos/tables':                  Tables,
-  '/dine-in':                     DineIn, 
+  '/dine-in':                     DineIn,
+  '/menu':                        MenuPublic, 
+  '/qr-generator':                QRGenerator,
 };
 
 function AppInner() {
@@ -76,6 +80,10 @@ function AppInner() {
   const [activePage, setActivePage] = useState('/home');
   const [activeMenu, setActiveMenu] = useState(null);
 
+   // Public menu page - no login required
+    if (window.location.pathname.startsWith('/menu/')) {
+      return <MenuPublic />;
+    }
   if (!user) return <Login />;
 
   const handleMenuChange = (menuurl, menuItem) => {
