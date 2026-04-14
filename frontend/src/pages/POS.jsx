@@ -1293,12 +1293,14 @@ ${company.hsn ? `<div class="center muted" style="margin-top:4px">HSN: ${company
             return (
               <div key={item.food_menu_id} style={{ ...S.menuCard, ...(inOrder ? { border: '2px solid var(--primary)', background: 'var(--primary-light)' } : {}) }} onClick={() => addItem(item)}>
                 {inOrder && <div style={{ position: 'absolute', top: 6, left: 6, background: 'var(--primary)', color: '#fff', borderRadius: '50%', width: 20, height: 20, fontSize: 11, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>×{inOrder.quantity}</div>}
-                <div style={{ position: 'absolute', top: 6, right: 6, width: 8, height: 8, borderRadius: '50%', background: item.is_veg !== false ? 'var(--primary)' : '#dc2626' }} />
-                {item.image_url
-                  ? <img src={item.image_url} alt="" style={{ width: '100%', height: 80, objectFit: 'cover', borderRadius: 6, marginBottom: 4 }} onError={e => e.target.style.display='none'} />
-                  : <div style={{ fontSize: 28, textAlign: 'center', marginBottom: 4, height: 80, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f5f5f5', borderRadius: 6 }}>🍱</div>
+                <div style={{ position:'relative', marginBottom:4 }}>
+                  {item.image_url
+                    ? <img src={item.image_url} alt="" style={{ width:'100%', height:80, objectFit:'cover', borderRadius:6, display:'block' }} onError={e => e.target.style.display='none'} />
+                    : <div style={{ height:80, display:'flex', alignItems:'center', justifyContent:'center', background:'#f5f5f5', borderRadius:6, fontSize:28 }}>🍱</div>
                   }
-                  <div style={{ fontSize: 12, fontWeight: 500, lineHeight: 1.3, marginBottom: 4 }}>{item.name}</div>
+                  <div style={{ position:'absolute', top:6, right:6, width:10, height:10, borderRadius:'50%', background:item.is_veg !== false ? 'var(--primary)' : '#dc2626', border:'2px solid #fff' }} />
+                </div>
+                <div style={{ fontSize:12, fontWeight:500, lineHeight:1.3, marginBottom:4 }}>{item.name}</div>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <span style={{ fontWeight: 700, fontSize: 13 }}>₹{parseFloat(item.sale_price || 0).toFixed(0)}</span>
                   <button style={S.addBtn} onClick={e => { e.stopPropagation(); addItem(item); }}>+ Add</button>
