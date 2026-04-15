@@ -262,6 +262,8 @@ export default function POS({ onNavigate }) {
   const [offlinePayMethod,     setOfflinePayMethod]     = useState('cash');
   const [offlineAmountPaid,    setOfflineAmountPaid]    = useState('');
   const [syncStatus,           setSyncStatus]           = useState({ total: 0, remaining: 0, syncing: false });
+  const [pendingCount,         setPendingCount]         = useState(0);
+  const [showSyncedMsg,        setShowSyncedMsg]        = useState(false);
 
   // ── Load data ─────────────────────────────────────────────
 const loadTables = useCallback(async () => {
@@ -347,13 +349,30 @@ const loadMenu = useCallback(async () => {
     loadTables(); loadOrders(); loadMenu();
   }, [cid]);
 
+  // ── Track pending sync count ─────────────────────────────
+  const updatePendingCount = () => {
+    try {
+      const offlineOrders  = getUnsyncedOfflineOrders().length;
+      const pendingBills   = JSON.parse(localStorage.getItem(`rms_pending_bills_${cid}`) || '[]').length;
+      const pendingItems   = JSON.parse(localStorage.getItem(`rms_pending_items_${cid}`) || '[]').length;
+      const pendingDels    = JSON.parse(localStorage.getItem(`rms_pending_deletions_${cid}`) || '[]').length;
+      const pendingUpdates = JSON.parse(localStorage.getItem(`rms_pending_updates_${cid}`) || '[]').length;
+      const total = offlineOrders + pendingBills + pendingItems + pendingDels + pendingUpdates;
+      setPendingCount(total);
+      return total;
+    } catch { return 0; }
+  };
+
   // ── Online/Offline detection + auto-sync ──────────────────
   useEffect(() => {
-    const goOffline = () => setIsOnline(false);
+    const goOffline = () => { setIsOnline(false); updatePendingCount(); };
     const goOnline  = () => {
       setIsOnline(true);
-      const count = getPendingCount();
-      if (count > 0) setSyncStatus({ total: count, remaining: count, syncing: true });
+      const count = updatePendingCount();
+      if (count > 0) {
+        setSyncStatus({ total: count, remaining: count, syncing: true });
+        setShowSyncedMsg(false);
+      }
       syncOfflineOrders();
     };
     window.addEventListener('offline', goOffline);
@@ -433,7 +452,8 @@ const loadMenu = useCallback(async () => {
       }
 
       if (anySynced) showToast('✅ Offline changes synced to server!');
-      setSyncStatus(prev => ({ ...prev, remaining: getPendingCount() }));
+      const rem = updatePendingCount();
+      setSyncStatus(prev => ({ ...prev, remaining: rem }));
     } catch {}
 
     // Sync existing online orders that were billed while offline
@@ -446,7 +466,7 @@ const loadMenu = useCallback(async () => {
             company_unique_id: cid,
             payment_method:    bill.payment_method,
             amount_paid:       bill.amount_paid,
-            discount_amount:   0,
+            discount_amount:   bill.discount || 0,
             service_charge:    bill.surcharge || 0,
             sgst_amount:       bill.sgst_amount || 0,
             cgst_amount:       bill.cgst_amount || 0,
@@ -496,7 +516,7 @@ const loadMenu = useCallback(async () => {
               company_unique_id: order.company_unique_id,
               payment_method:    order.payment_method,
               amount_paid:       parseFloat(order.amount_paid || order.total_payable || 0),
-              discount_amount:   0,
+              discount_amount:   parseFloat(order.discount_amount || order.discount || 0),
               service_charge:    parseFloat(order.surcharge || 0),
               sgst_amount:       parseFloat(order.sgst_amount || 0),
               cgst_amount:       parseFloat(order.cgst_amount || 0),
@@ -517,8 +537,12 @@ const loadMenu = useCallback(async () => {
       loadTables();
     }
     // Clear sync status when done
-    const remaining = getPendingCount();
+    const remaining = updatePendingCount();
     setSyncStatus(prev => ({ ...prev, remaining, syncing: remaining > 0 }));
+    if (remaining === 0) {
+      setShowSyncedMsg(true);
+      setTimeout(() => setShowSyncedMsg(false), 4000); // auto-hide after 4 seconds
+    }
   };
 
   const refresh = async () => {
@@ -566,6 +590,7 @@ const loadMenu = useCallback(async () => {
       showToast('📴 Offline order created — syncs when online');
       resetForm();
       setSaving(false);
+      updatePendingCount();
       return;
     }
 
@@ -1365,9 +1390,11 @@ ${company.hsn ? `<div class="center muted" style="margin-top:4px">HSN: ${company
     <div style={S.root}>
 
       {/* ── Sync Status Banner ── */}
-      {!isOnline && getPendingCount() > 50 && (
-        <div style={{ position:'fixed', top:48, left:0, right:0, zIndex:200, background:'#7f1d1d', color:'#fecaca', padding:'6px 16px', fontSize:12, fontWeight:600, textAlign:'center' }}>
-          ⚠️ {getPendingCount()} orders pending sync — Please restore internet soon!
+      {!isOnline && pendingCount > 0 && (
+        <div style={{ position:'fixed', top:48, left:0, right:0, zIndex:200, background: pendingCount > 50 ? '#7f1d1d' : '#92400e', color: pendingCount > 50 ? '#fecaca' : '#fef3c7', padding:'6px 16px', fontSize:12, fontWeight:600, textAlign:'center', display:'flex', alignItems:'center', justifyContent:'center', gap:8 }}>
+          {pendingCount > 50 ? '⚠️' : '📴'}
+          <span>{pendingCount} order{pendingCount !== 1 ? 's' : ''} pending sync</span>
+          {pendingCount > 50 && <span>— Please restore internet soon!</span>}
         </div>
       )}
       {isOnline && syncStatus.syncing && (
@@ -1382,7 +1409,7 @@ ${company.hsn ? `<div class="center muted" style="margin-top:4px">HSN: ${company
           <span style={{ fontSize:11 }}>{syncStatus.total > 0 ? Math.round(((syncStatus.total - syncStatus.remaining) / syncStatus.total) * 100) : 0}%</span>
         </div>
       )}
-      {isOnline && !syncStatus.syncing && syncStatus.total > 0 && (
+      {isOnline && showSyncedMsg && (
         <div style={{ position:'fixed', top:48, left:0, right:0, zIndex:200, background:'#14532d', color:'#bbf7d0', padding:'6px 16px', fontSize:12, fontWeight:600, textAlign:'center' }}>
           ✅ All offline data synced successfully!
         </div>
@@ -2350,17 +2377,19 @@ ${company.hsn ? `<div class="center muted" style="margin-top:4px">HSN: ${company
                   if (isOfflineOrder) {
                     // Offline order — save locally and print (with full amounts for server sync)
                     const updated = markOfflineOrderBilled(activeOrder.offline_id, offlinePayMethod, paid, {
+                      discount:    discountAmt,
                       surcharge:   surcharge,
                       sgst_amount: sgstAmt,
                       cgst_amount: cgstAmt,
                       sgst_rate:   sgstRate,
                       cgst_rate:   cgstRate,
-                      total:       total,
+                      total:       totalRounded,
                     });
                     if (updated) {
                       printOfflineBill(updated, selectedCompany || {});
                       showToast('🧾 Offline bill generated & printed!');
                       setShowOfflineBillModal(false);
+                      updatePendingCount();
                       // Show bill details in center panel instead of going blank
                       setActiveOrder({ ...updated, order_status: 'billed', items: updated.items || [] });
                       setBill({
@@ -2385,10 +2414,11 @@ ${company.hsn ? `<div class="center muted" style="margin-top:4px">HSN: ${company
                         order_number:   activeOrder?.order_number,
                         payment_method: offlinePayMethod,
                         amount_paid:    paid,
+                        discount:       discountAmt,
                         surcharge:      surcharge,
                         sgst_amount:    sgstAmt,
                         cgst_amount:    cgstAmt,
-                        total:          total,
+                        total:          totalRounded,
                       });
                       localStorage.setItem(`rms_pending_bills_${cid}`, JSON.stringify(pendingBills));
                     } catch {}
@@ -2402,12 +2432,13 @@ ${company.hsn ? `<div class="center muted" style="margin-top:4px">HSN: ${company
                       amount_paid:    paid,
                       items:          activeItems.map(i => ({ item_name: i.item_name, quantity: i.quantity, unit_price: parseFloat(i.unit_price), is_veg: i.is_veg })),
                       subtotal,
+                      discount:       discountAmt,
                       surcharge,
                       sgst_amount:    sgstAmt,
                       cgst_amount:    cgstAmt,
                       sgst_rate:      sgstRate,
                       cgst_rate:      cgstRate,
-                      total_payable:  total,
+                      total_payable:  totalRounded,
                     };
                     printOfflineBill(billData, selectedCompany || {});
                     showToast('🧾 Bill printed! Will auto-sync when online.');

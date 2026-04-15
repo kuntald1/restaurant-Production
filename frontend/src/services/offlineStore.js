@@ -106,6 +106,7 @@ export const markOfflineOrderBilled = (offlineId, paymentMethod, amountPaid, ext
   order.amount_paid    = amountPaid;
   order.billed_at      = new Date().toISOString();
   // Store extra info for server sync
+  if (extra.discount)    order.discount_amount = extra.discount;
   if (extra.surcharge)   order.surcharge   = extra.surcharge;
   if (extra.sgst_amount) order.sgst_amount = extra.sgst_amount;
   if (extra.cgst_amount) order.cgst_amount = extra.cgst_amount;
@@ -132,6 +133,7 @@ export const printOfflineBill = (order, company = {}) => {
   if (!w) return;
   const items    = order.items || [];
   const subtotal = order.subtotal || 0;
+  const discount  = parseFloat(order.discount_amount || order.discount || 0);
   const surcharge = parseFloat(order.surcharge || 0);
   const sgstAmt  = parseFloat(order.sgst_amount || 0);
   const cgstAmt  = parseFloat(order.cgst_amount || 0);
@@ -171,6 +173,7 @@ ${order.customer_name ? `<div class="row"><span class="bold">Customer:</span><sp
 ${items.map(it => `<div class="row"><span>${it.is_veg === false ? '🔴' : '🟢'} ${it.item_name} x${it.quantity}</span><span>₹${(Math.round(it.unit_price) * it.quantity)}</span></div>`).join('')}
 <div class="line"></div>
 <div class="row"><span>Subtotal</span><span>₹${Math.round(subtotal)}</span></div>
+${discount > 0 ? `<div class="row" style="color:#991b1b"><span>Discount</span><span>-₹${discount.toFixed(2)}</span></div>` : ''}
 ${surcharge > 0 ? `<div class="row"><span>Table Surcharge</span><span>+₹${surcharge.toFixed(2)}</span></div>` : ''}
 ${sgstAmt > 0 ? `<div class="row"><span>SGST (${sgstRate}%)</span><span>+₹${sgstAmt.toFixed(2)}</span></div>` : ''}
 ${cgstAmt > 0 ? `<div class="row"><span>CGST (${cgstRate}%)</span><span>+₹${cgstAmt.toFixed(2)}</span></div>` : ''}
