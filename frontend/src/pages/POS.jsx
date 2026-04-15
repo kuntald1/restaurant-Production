@@ -1235,8 +1235,8 @@ ${company.hsn ? `<div class="center muted" style="margin-top:4px">HSN: ${company
         service_charge:    surcharge,
         promo_code:        promoResult?.code || null,
         promo_amount:      promoDiscount || 0,
-        sgst_amount:       sgstAmt || 0,
-        cgst_amount:       cgstAmt || 0,
+        sgst_amount:       Math.round(sgstAmt * 100) / 100 || 0,
+        cgst_amount:       Math.round(cgstAmt * 100) / 100 || 0,
         customer_id:       billCustomerId || null,
         created_by:        user?.user_id || null,
       });
@@ -1307,8 +1307,8 @@ ${company.hsn ? `<div class="center muted" style="margin-top:4px">HSN: ${company
   const sgstRate = parseFloat(companySettings?.sgst || selectedCompany?.sgst || 0);
   const cgstRate = parseFloat(companySettings?.cgst || selectedCompany?.cgst || 0);
   const taxableBase = Math.max(0, subtotal - discountAmt - promoDiscount);
-  const sgstAmt = sgstRate > 0 ? (taxableBase * sgstRate / 100) : 0;
-  const cgstAmt = cgstRate > 0 ? (taxableBase * cgstRate / 100) : 0;
+  const sgstAmt = sgstRate > 0 ? Math.round(taxableBase * sgstRate) / 100 : 0;
+  const cgstAmt = cgstRate > 0 ? Math.round(taxableBase * cgstRate) / 100 : 0;
 
   const total        = Math.max(0, taxableBase + surcharge + sgstAmt + cgstAmt);
   const roundOff     = Math.round(total) - total; // e.g. -0.49 or +0.51

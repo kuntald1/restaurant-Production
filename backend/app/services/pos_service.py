@@ -516,8 +516,8 @@ def generate_bill(db: Session, data: BillCreate):
     promo_amt   = float(getattr(data, 'promo_amount', 0) or 0)
     promo_code  = getattr(data, 'promo_code', None) or None
     customer_id = getattr(data, 'customer_id', None)
-    sgst_amt    = float(getattr(data, 'sgst_amount', 0) or 0)
-    cgst_amt    = float(getattr(data, 'cgst_amount', 0) or 0)
+    sgst_amt    = round(float(getattr(data, 'sgst_amount', 0) or 0), 2)
+    cgst_amt    = round(float(getattr(data, 'cgst_amount', 0) or 0), 2)
 
     # Apply promo and taxes — always round the result
     if promo_amt > 0:
@@ -614,10 +614,10 @@ def generate_bill(db: Session, data: BillCreate):
         bill_update_vals["promo_amount"] = promo_amt
     if _sgst_to_save > 0:
         bill_update_parts.append("sgst_amount = :sgst_amount")
-        bill_update_vals["sgst_amount"] = _sgst_to_save
+        bill_update_vals["sgst_amount"] = round(_sgst_to_save, 2)
     if _cgst_to_save > 0:
         bill_update_parts.append("cgst_amount = :cgst_amount")
-        bill_update_vals["cgst_amount"] = _cgst_to_save
+        bill_update_vals["cgst_amount"] = round(_cgst_to_save, 2)
     if customer_id:
         bill_update_parts.append("customer_id = :customer_id")
         bill_update_vals["customer_id"] = customer_id
