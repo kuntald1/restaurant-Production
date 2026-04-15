@@ -1310,13 +1310,15 @@ ${company.hsn ? `<div class="center muted" style="margin-top:4px">HSN: ${company
   const sgstAmt = sgstRate > 0 ? (taxableBase * sgstRate / 100) : 0;
   const cgstAmt = cgstRate > 0 ? (taxableBase * cgstRate / 100) : 0;
 
-  const total = Math.max(0, taxableBase + surcharge + sgstAmt + cgstAmt);
+  const total        = Math.max(0, taxableBase + surcharge + sgstAmt + cgstAmt);
+  const roundOff     = Math.round(total) - total; // e.g. -0.49 or +0.51
+  const totalRounded = Math.round(total);
 
   // Keep amountPaid in sync with total when bill modal open (e.g. promo applied)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
-    if (modal === 'bill') setAmountPaid(total.toFixed(2));
-  }, [total, modal]);
+    if (modal === 'bill') setAmountPaid(totalRounded.toFixed(2));
+  }, [totalRounded, modal]);
   const isLocked     = ['billed','cancelled','picked_up','picked_up_by_delivery_agent'].includes(activeOrder?.order_status);
   const isCooking    = activeOrder?.order_status === 'kot_inprocess';
   const canSendKOT   = activeOrder && !isLocked && activeItems.length > 0;
