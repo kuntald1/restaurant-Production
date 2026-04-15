@@ -1014,7 +1014,7 @@ ${company.hsn ? `<div class="center muted" style="margin-top:4px">HSN: ${company
     if (waSgstAmt > 0) msg += `SGST              +₹${waSgstAmt.toFixed(2)}\n`;
     if (waCgstAmt > 0) msg += `CGST              +₹${waCgstAmt.toFixed(2)}\n`;
     msg += `${line}\n`;
-    msg += `*TOTAL PAYABLE    ₹${total.toFixed(2)}*\n`;
+    msg += `*TOTAL PAYABLE    ₹${Math.round(total).toFixed(2)}*\n`;
     msg += `${line}\n`;
     // UPI payment info if available
     const upiId   = companySettings?.upi_id   || paySettings?.upi_id;
@@ -1572,7 +1572,7 @@ ${company.hsn ? `<div class="center muted" style="margin-top:4px">HSN: ${company
               )}
               <div style={{ ...S.totalRow, borderTop: '2px solid var(--border)', paddingTop: 10, marginTop: 4 }}>
                 <span style={{ fontWeight: 800, fontSize: 15 }}>Total Payable</span>
-                <span style={{ fontWeight: 800, fontSize: 19, color: 'var(--primary)' }}>₹{total.toFixed(2)}</span>
+                <span style={{ fontWeight: 800, fontSize: 19, color: 'var(--primary)' }}>₹{totalRounded.toFixed(2)}</span>
               </div>
             </div>
 
@@ -1593,22 +1593,22 @@ ${company.hsn ? `<div class="center muted" style="margin-top:4px">HSN: ${company
               </div>
             )}
             {isOfflineOrder && activeItems.length > 0 && (
-              <button style={{ ...S.billBtn, background: 'linear-gradient(135deg,#856404,#b45309)' }} onClick={() => { setOfflineAmountPaid(total.toFixed(2)); setShowOfflineBillModal(true); }}>
-                🧾 Generate Offline Bill · ₹{total.toFixed(2)}
+              <button style={{ ...S.billBtn, background: 'linear-gradient(135deg,#856404,#b45309)' }} onClick={() => { setOfflineAmountPaid(totalRounded.toFixed(2)); setShowOfflineBillModal(true); }}>
+                🧾 Generate Offline Bill · ₹{totalRounded.toFixed(2)}
               </button>
             )}
             {!isLocked && !isOfflineOrder && (
               <button style={S.billBtn} onClick={() => {
                 if (!isOnline) {
-                  setOfflineAmountPaid(total.toFixed(2));
+                  setOfflineAmountPaid(totalRounded.toFixed(2));
                   setOfflinePayMethod('cash');
                   setShowOfflineBillModal(true);
                 } else {
-                  setAmountPaid(total.toFixed(2));
+                  setAmountPaid(totalRounded.toFixed(2));
                   setModal('bill');
                 }
               }} disabled={activeItems.length === 0}>
-                🧾 Generate Bill · ₹{total.toFixed(2)}
+                🧾 Generate Bill · ₹{totalRounded.toFixed(2)}
               </button>
             )}
             {!isLocked && !isCooking && (
@@ -1960,7 +1960,7 @@ ${company.hsn ? `<div class="center muted" style="margin-top:4px">HSN: ${company
                         </div>
                       )}
                       <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--primary)', marginBottom: 10 }}>
-                        ₹{total.toFixed(2)}
+                        ₹{totalRounded.toFixed(2)}
                       </div>
                       <div style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 8 }}>
                         Customer scans QR → pays → confirm below
@@ -2027,7 +2027,7 @@ ${company.hsn ? `<div class="center muted" style="margin-top:4px">HSN: ${company
                         script.onload = () => {
                           const options = {
                             key:         companySettings?.razorpay_key_id || paySettings.razorpay_key_id,
-                            amount:      Math.round(total * 100), // paise
+                            amount:      totalRounded * 100, // paise (already rounded)
                             currency:    'INR',
                             name:        companySettings?.merchant_name || paySettings.merchant_name || selectedCompany?.name || 'Restaurant',
                             description: paySettings.merchant_description || `Order ${activeOrder?.order_number}`,
@@ -2043,7 +2043,7 @@ ${company.hsn ? `<div class="center muted" style="margin-top:4px">HSN: ${company
                               // ✅ Auto-confirmed — Razorpay returns payment_id
                               const rzpPaymentId = response.razorpay_payment_id;
                               setPayRef(rzpPaymentId);
-                              setAmountPaid(total.toFixed(2));
+                              setAmountPaid(totalRounded.toFixed(2));
                               setRzpStatus('success');
 
                               // Save transaction to backend DB only
@@ -2069,7 +2069,7 @@ ${company.hsn ? `<div class="center muted" style="margin-top:4px">HSN: ${company
                                   company_unique_id: cid,
                                   payment_method:    merchantSub === 'merchant_upi' ? 'upi' : 'card',
                                   payment_reference: rzpPaymentId,
-                                  amount_paid:       total,
+                                  amount_paid:       totalRounded,
                                   discount_amount:   parseFloat(discount) || 0,
                                   service_charge:    surcharge,
                                   promo_code:        promoResult?.code || null,
@@ -2145,7 +2145,7 @@ ${company.hsn ? `<div class="center muted" style="margin-top:4px">HSN: ${company
                         script.onerror = () => { setRzpStatus('failed'); };
                         document.body.appendChild(script);
                       }}>
-                      {rzpStatus === 'loading' ? '⏳ Opening Razorpay…' : `🏦 Pay ₹${total.toFixed(2)} via ${merchantSub === 'merchant_upi' ? 'UPI' : 'Card'}`}
+                      {rzpStatus === 'loading' ? '⏳ Opening Razorpay…' : `🏦 Pay ₹${totalRounded.toFixed(2)} via ${merchantSub === 'merchant_upi' ? 'UPI' : 'Card'}`}
                     </button>
                   )}
                 </div>
@@ -2269,7 +2269,7 @@ ${company.hsn ? `<div class="center muted" style="margin-top:4px">HSN: ${company
                 {sgstAmt > 0 && <div style={{ display:'flex', justifyContent:'space-between', fontSize:13, marginBottom:4, color:'#1e40af' }}><span>SGST ({sgstRate}%)</span><span>+₹{sgstAmt.toFixed(2)}</span></div>}
                 {cgstAmt > 0 && <div style={{ display:'flex', justifyContent:'space-between', fontSize:13, marginBottom:4, color:'#1e40af' }}><span>CGST ({cgstRate}%)</span><span>+₹{cgstAmt.toFixed(2)}</span></div>}
                 <div style={{ display:'flex', justifyContent:'space-between', fontWeight:700, fontSize:16, borderTop:'1px solid var(--border)', paddingTop:8, marginTop:4 }}>
-                  <span>Total</span><span style={{ color:'var(--primary)' }}>₹{total.toFixed(2)}</span>
+                  <span>Total</span><span style={{ color:'var(--primary)' }}>₹{totalRounded.toFixed(2)}</span>
                 </div>
               </div>
             </div>
