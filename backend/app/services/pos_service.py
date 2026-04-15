@@ -224,6 +224,7 @@ def create_order(db: Session, data: OrderCreate):
             category_name     = item_data.category_name,
             unit_price        = item_data.unit_price,
             quantity          = item_data.quantity,
+            total_price       = float(item_data.unit_price) * item_data.quantity,
             modifiers         = item_data.modifiers or [],
             is_veg            = item_data.is_veg,
             notes             = item_data.notes,
@@ -270,6 +271,7 @@ def add_item_to_order(db: Session, order_id: int, item_data: OrderItemCreate, co
         category_name     = item_data.category_name,
         unit_price        = item_data.unit_price,
         quantity          = item_data.quantity,
+        total_price       = float(item_data.unit_price) * item_data.quantity,
         modifiers         = item_data.modifiers or [],
         is_veg            = item_data.is_veg,
         notes             = item_data.notes,
@@ -302,6 +304,7 @@ def update_item_quantity(db: Session, order_id: int, order_item_id: int, quantit
         item.cancelled_reason = "Removed by staff"
     else:
         item.quantity = quantity
+        item.total_price = float(item.unit_price) * quantity
     item.updated_at = datetime.utcnow()
     db.commit()
     _recalculate_order_totals(db, order)
