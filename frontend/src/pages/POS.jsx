@@ -261,6 +261,7 @@ export default function POS({ onNavigate }) {
   const [showOfflineBillModal, setShowOfflineBillModal] = useState(false);
   const [offlinePayMethod,     setOfflinePayMethod]     = useState('cash');
   const [offlineAmountPaid,    setOfflineAmountPaid]    = useState('');
+  const [syncStatus,           setSyncStatus]           = useState({ total: 0, remaining: 0, syncing: false });
 
   // ── Load data ─────────────────────────────────────────────
 const loadTables = useCallback(async () => {
@@ -349,11 +350,28 @@ const loadMenu = useCallback(async () => {
   // ── Online/Offline detection + auto-sync ──────────────────
   useEffect(() => {
     const goOffline = () => setIsOnline(false);
-    const goOnline  = () => { setIsOnline(true); syncOfflineOrders(); };
+    const goOnline  = () => {
+      setIsOnline(true);
+      const count = getPendingCount();
+      if (count > 0) setSyncStatus({ total: count, remaining: count, syncing: true });
+      syncOfflineOrders();
+    };
     window.addEventListener('offline', goOffline);
     window.addEventListener('online',  goOnline);
     return () => { window.removeEventListener('offline', goOffline); window.removeEventListener('online', goOnline); };
   }, []);
+
+  // ── Count all pending items for sync ────────────────────
+  const getPendingCount = () => {
+    try {
+      const offlineOrders  = getUnsyncedOfflineOrders().length;
+      const pendingBills   = JSON.parse(localStorage.getItem(`rms_pending_bills_${cid}`) || '[]').length;
+      const pendingItems   = JSON.parse(localStorage.getItem(`rms_pending_items_${cid}`) || '[]').length;
+      const pendingDels    = JSON.parse(localStorage.getItem(`rms_pending_deletions_${cid}`) || '[]').length;
+      const pendingUpdates = JSON.parse(localStorage.getItem(`rms_pending_updates_${cid}`) || '[]').length;
+      return offlineOrders + pendingBills + (pendingItems > 0 ? 1 : 0) + (pendingDels > 0 ? 1 : 0) + (pendingUpdates > 0 ? 1 : 0);
+    } catch { return 0; }
+  };
 
   const syncOfflineOrders = async () => {
     // Sync pending item changes for existing online orders
@@ -415,6 +433,7 @@ const loadMenu = useCallback(async () => {
       }
 
       if (anySynced) showToast('✅ Offline changes synced to server!');
+      setSyncStatus(prev => ({ ...prev, remaining: getPendingCount() }));
     } catch {}
 
     // Sync existing online orders that were billed while offline
@@ -497,6 +516,9 @@ const loadMenu = useCallback(async () => {
       loadOrders();
       loadTables();
     }
+    // Clear sync status when done
+    const remaining = getPendingCount();
+    setSyncStatus(prev => ({ ...prev, remaining, syncing: remaining > 0 }));
   };
 
   const refresh = async () => {
@@ -1341,6 +1363,30 @@ ${company.hsn ? `<div class="center muted" style="margin-top:4px">HSN: ${company
 
   return (
     <div style={S.root}>
+
+      {/* ── Sync Status Banner ── */}
+      {!isOnline && getPendingCount() > 50 && (
+        <div style={{ position:'fixed', top:48, left:0, right:0, zIndex:200, background:'#7f1d1d', color:'#fecaca', padding:'6px 16px', fontSize:12, fontWeight:600, textAlign:'center' }}>
+          ⚠️ {getPendingCount()} orders pending sync — Please restore internet soon!
+        </div>
+      )}
+      {isOnline && syncStatus.syncing && (
+        <div style={{ position:'fixed', top:48, left:0, right:0, zIndex:200, background:'#1e3a5f', color:'#bfdbfe', padding:'6px 16px', fontSize:12, fontWeight:600, textAlign:'center', display:'flex', alignItems:'center', justifyContent:'center', gap:12 }}>
+          <span>🔄 Syncing offline data to server...</span>
+          <span style={{ background:'rgba(255,255,255,0.15)', borderRadius:20, padding:'2px 10px' }}>
+            {syncStatus.remaining} remaining
+          </span>
+          <div style={{ width:120, height:6, background:'rgba(255,255,255,0.2)', borderRadius:3, overflow:'hidden' }}>
+            <div style={{ height:'100%', background:'#60a5fa', borderRadius:3, transition:'width 0.5s', width: syncStatus.total > 0 ? `${Math.round(((syncStatus.total - syncStatus.remaining) / syncStatus.total) * 100)}%` : '0%' }} />
+          </div>
+          <span style={{ fontSize:11 }}>{syncStatus.total > 0 ? Math.round(((syncStatus.total - syncStatus.remaining) / syncStatus.total) * 100) : 0}%</span>
+        </div>
+      )}
+      {isOnline && !syncStatus.syncing && syncStatus.total > 0 && (
+        <div style={{ position:'fixed', top:48, left:0, right:0, zIndex:200, background:'#14532d', color:'#bbf7d0', padding:'6px 16px', fontSize:12, fontWeight:600, textAlign:'center' }}>
+          ✅ All offline data synced successfully!
+        </div>
+      )}
 
       {/* ── LEFT: Running Orders ── */}
       <div style={S.left}>
