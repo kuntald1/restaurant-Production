@@ -15,6 +15,11 @@ from app.schemas.pos_schemas import (
 )
 
 
+# ── Proper rounding (avoids Python banker's rounding on .5) ──
+import math
+def round_half_up(n):
+    return math.floor(float(n) + 0.5)
+
 # ── Safe attribute getter ─────────────────────────────────────
 def _safe_get(obj, attr, default=0):
     try:
@@ -30,15 +35,12 @@ def _recalculate_order_totals(db: Session, order: Order):
     """Recalculate subtotal and total_payable — always rounded to whole rupees."""
     active_items = [i for i in order.items if not i.is_cancelled]
     order.subtotal = sum(round(float(i.unit_price)) * i.quantity for i in active_items)
-    # Use table_surcharge_amount as the surcharge source
-    # service_charge is set from frontend during billing and mirrors table_surcharge_amount
-    # so we use only ONE of them to avoid double counting
-    surcharge = float(_safe_get(order, 'table_surcharge_amount', 0)) or float(order.service_charge or 0)
-    order.total_payable = round(
+    order.total_payable = round_half_up(
         float(order.subtotal)
         - float(order.discount_amount or 0)
-        + surcharge
+        + float(order.service_charge or 0)
         + float(order.tax_amount or 0)
+        + float(_safe_get(order, 'table_surcharge_amount', 0))
     )
     db.commit()
     db.refresh(order)
@@ -519,14 +521,14 @@ def generate_bill(db: Session, data: BillCreate):
     promo_amt   = float(getattr(data, 'promo_amount', 0) or 0)
     promo_code  = getattr(data, 'promo_code', None) or None
     customer_id = getattr(data, 'customer_id', None)
-    sgst_amt    = round(float(getattr(data, 'sgst_amount', 0) or 0), 2)
-    cgst_amt    = round(float(getattr(data, 'cgst_amount', 0) or 0), 2)
+    sgst_amt    = float(getattr(data, 'sgst_amount', 0) or 0)
+    cgst_amt    = float(getattr(data, 'cgst_amount', 0) or 0)
 
     # Apply promo and taxes — always round the result
     if promo_amt > 0:
-        order.total_payable = round(max(0, float(order.total_payable) - promo_amt))
+        order.total_payable = round_half_up(max(0, float(order.total_payable) - promo_amt))
     if sgst_amt > 0 or cgst_amt > 0:
-        order.total_payable = round(float(order.total_payable) + sgst_amt + cgst_amt)
+        order.total_payable = round_half_up(float(order.total_payable) + sgst_amt + cgst_amt)
 
     db.commit()
 
@@ -556,8 +558,8 @@ def generate_bill(db: Session, data: BillCreate):
             db.rollback()
 
     active_items    = [i for i in order.items if not i.is_cancelled]
-    total_rounded   = round(float(order.total_payable))
-    amount_paid_r   = round(float(data.amount_paid))
+    total_rounded   = round_half_up(float(order.total_payable))
+    amount_paid_r   = round_half_up(float(data.amount_paid))
 
     bill_kwargs = dict(
         order_id          = data.order_id,
@@ -617,10 +619,10 @@ def generate_bill(db: Session, data: BillCreate):
         bill_update_vals["promo_amount"] = promo_amt
     if _sgst_to_save > 0:
         bill_update_parts.append("sgst_amount = :sgst_amount")
-        bill_update_vals["sgst_amount"] = round(_sgst_to_save, 2)
+        bill_update_vals["sgst_amount"] = _sgst_to_save
     if _cgst_to_save > 0:
         bill_update_parts.append("cgst_amount = :cgst_amount")
-        bill_update_vals["cgst_amount"] = round(_cgst_to_save, 2)
+        bill_update_vals["cgst_amount"] = _cgst_to_save
     if customer_id:
         bill_update_parts.append("customer_id = :customer_id")
         bill_update_vals["customer_id"] = customer_id

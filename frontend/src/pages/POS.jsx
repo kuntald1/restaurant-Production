@@ -173,6 +173,9 @@ function CustomerPanel({ cid, order, companySettings, onPhoneChange, onCustomerF
   );
 }
 
+// ── Proper rounding (avoids JS banker's rounding on .5) ──────
+const roundHalfUp = (n) => Math.floor(Number(n) + 0.5);
+
 export default function POS({ onNavigate }) {
   const { selectedCompany, showToast, user, companySettings } = useApp();
   const cid = selectedCompany?.company_unique_id;
@@ -1311,8 +1314,8 @@ ${company.hsn ? `<div class="center muted" style="margin-top:4px">HSN: ${company
   const cgstAmt = cgstRate > 0 ? Math.round(taxableBase * cgstRate) / 100 : 0;
 
   const total        = Math.max(0, taxableBase + surcharge + sgstAmt + cgstAmt);
-  const roundOff     = Math.round(total) - total; // e.g. -0.49 or +0.51
-  const totalRounded = Math.round(total);
+  const roundOff     = roundHalfUp(total) - total; // e.g. -0.49 or +0.51
+  const totalRounded = roundHalfUp(total);
 
   // Keep amountPaid in sync with total when bill modal open (e.g. promo applied)
   // eslint-disable-next-line react-hooks/exhaustive-deps

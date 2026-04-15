@@ -71,7 +71,7 @@ export const addItemToOfflineOrder = (offlineId, menuItem) => {
     });
   }
   order.subtotal      = order.items.reduce((s, i) => s + Math.round(i.unit_price) * i.quantity, 0);
-  order.total_payable = Math.round(order.subtotal);
+  order.total_payable = roundHalfUp(order.subtotal);
   saveOfflineOrders(orders);
   return order;
 };
@@ -89,7 +89,7 @@ export const removeItemFromOfflineOrder = (offlineId, food_menu_id) => {
     order.items = order.items.filter(i => i.food_menu_id !== food_menu_id);
   }
   order.subtotal      = order.items.reduce((s, i) => s + Math.round(i.unit_price) * i.quantity, 0);
-  order.total_payable = Math.round(order.subtotal);
+  order.total_payable = roundHalfUp(order.subtotal);
   saveOfflineOrders(orders);
   return order;
 };
@@ -134,7 +134,7 @@ export const printOfflineBill = (order, company = {}) => {
   const cgstAmt  = parseFloat(order.cgst_amount || 0);
   const sgstRate = parseFloat(order.sgst_rate || 0);
   const cgstRate = parseFloat(order.cgst_rate || 0);
-  const total    = Math.round(order.total_payable || (subtotal + surcharge + sgstAmt + cgstAmt));
+  const total    = roundHalfUp(order.total_payable || (subtotal + surcharge + sgstAmt + cgstAmt));
   const now      = new Date().toLocaleString('en-IN');
   w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8">
 <title>Offline Bill</title>
