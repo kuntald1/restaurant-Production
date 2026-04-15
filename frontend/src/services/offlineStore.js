@@ -1,3 +1,6 @@
+// ── Proper rounding (avoids JS banker's rounding on .5) ──────
+const roundHalfUp = (n) => Math.floor(Number(n) + 0.5);
+
 // ── Cache Keys ──────────────────────────────────────────────
 const KEYS = {
   menu:           'rms_offline_menu',
