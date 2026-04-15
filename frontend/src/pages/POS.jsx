@@ -885,7 +885,7 @@ ${kot.notes ? `<div style="padding:4px 0"><span class="bold">Note: </span>${kot.
       const taxableAmt = Math.max(0, subtotal - discount - promoDiscountPrint);
       const sgstAmt  = sgstRate > 0 ? (taxableAmt * sgstRate / 100) : 0;
       const cgstAmt  = cgstRate > 0 ? (taxableAmt * cgstRate / 100) : 0;
-      const total    = Math.max(0, taxableAmt + surcharge + tax + sgstAmt + cgstAmt);
+      const total    = Math.round(Math.max(0, taxableAmt + surcharge + tax + sgstAmt + cgstAmt));
 
       const w = window.open('', '_blank', 'width=400,height=700');
       if (!w) { showToast('Allow popups to print bill', 'error'); return; }
@@ -1014,7 +1014,7 @@ ${company.hsn ? `<div class="center muted" style="margin-top:4px">HSN: ${company
     if (waSgstAmt > 0) msg += `SGST              +₹${waSgstAmt.toFixed(2)}\n`;
     if (waCgstAmt > 0) msg += `CGST              +₹${waCgstAmt.toFixed(2)}\n`;
     msg += `${line}\n`;
-    msg += `*TOTAL PAYABLE    ₹${Math.round(total).toFixed(2)}*\n`;
+    msg += `*TOTAL PAYABLE    ₹${Math.round(total)}*\n`;
     msg += `${line}\n`;
     // UPI payment info if available
     const upiId   = companySettings?.upi_id   || paySettings?.upi_id;
@@ -1059,7 +1059,7 @@ ${company.hsn ? `<div class="center muted" style="margin-top:4px">HSN: ${company
       const taxBase    = Math.max(0, subtotal - disc - promoAmt);
       const wasgstAmt  = wasgstRate > 0 ? (taxBase * wasgstRate / 100) : 0;
       const wacgstAmt  = wacgstRate > 0 ? (taxBase * wacgstRate / 100) : 0;
-      const totalAmt = Math.max(0, taxBase + surge + wasgstAmt + wacgstAmt);
+      const totalAmt = Math.round(Math.max(0, taxBase + surge + wasgstAmt + wacgstAmt));
       const line     = '─────────────────────────';
 
       // Step 1 — Create Razorpay Payment Link from backend
@@ -1104,7 +1104,7 @@ ${company.hsn ? `<div class="center muted" style="margin-top:4px">HSN: ${company
       if (wasgstAmt > 0) msg += `SGST (${wasgstRate}%)      +₹${wasgstAmt.toFixed(2)}\n`;
       if (wacgstAmt > 0) msg += `CGST (${wacgstRate}%)      +₹${wacgstAmt.toFixed(2)}\n`;
       msg += `${line}\n`;
-      msg += `*AMOUNT TO PAY    ₹${totalAmt.toFixed(2)}*\n`;
+      msg += `*AMOUNT TO PAY    ₹${totalAmt}*\n`;
       msg += `${line}\n`;
       msg += `💳 *Click to Pay (Razorpay):*\n${shortUrl}\n`;
       msg += `${line}\n`;
