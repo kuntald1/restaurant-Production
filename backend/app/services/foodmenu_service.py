@@ -12,7 +12,7 @@ def create_companyfoodmenu(db: Session, payload: FoodMenuCreate):
         code              = payload.code,
         name              = payload.name,
         description       = payload.description,
-        sale_price        = payload.sale_price,
+        sale_price        = round(float(payload.sale_price)),
         image_url         = payload.image_url,
         display_order     = payload.display_order,
         IsActive         = payload.is_active,

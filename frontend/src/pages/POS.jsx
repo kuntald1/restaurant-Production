@@ -592,7 +592,7 @@ const loadMenu = useCallback(async () => {
           item_name:     menuItem.name,
           item_code:     menuItem.code || '',
           category_name: menuItem.category_name || '',
-          unit_price:    parseFloat(menuItem.sale_price || 0),
+          unit_price:    Math.round(parseFloat(menuItem.sale_price || 0)),
           quantity:      1,
           is_veg:        menuItem.is_veg !== false,
         });
@@ -604,7 +604,7 @@ const loadMenu = useCallback(async () => {
         const items = [...(prev.items || [])];
         const ex = items.find(i => i.food_menu_id === menuItem.food_menu_id);
         if (ex) { ex.quantity += 1; }
-        else { items.push({ food_menu_id: menuItem.food_menu_id, item_name: menuItem.name, item_code: menuItem.code || '', unit_price: parseFloat(menuItem.sale_price || 0), quantity: 1, is_veg: menuItem.is_veg !== false, is_cancelled: false, order_item_id: Date.now() }); }
+        else { items.push({ food_menu_id: menuItem.food_menu_id, item_name: menuItem.name, item_code: menuItem.code || '', unit_price: Math.round(parseFloat(menuItem.sale_price || 0)), quantity: 1, is_veg: menuItem.is_veg !== false, is_cancelled: false, order_item_id: Date.now() }); }
         return { ...prev, items };
       });
       return;

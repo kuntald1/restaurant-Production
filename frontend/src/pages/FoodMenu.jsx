@@ -37,7 +37,7 @@ export default function FoodMenu() {
   const handleSubmit = async (e) => {
     e.preventDefault(); setSaving(true);
     try {
-      const payload = {...form, sale_price: parseFloat(form.sale_price), display_order: parseInt(form.display_order), category_id: parseInt(form.category_id),created_by: user?.user_id, modified_by: user?.user_id};
+      const payload = {...form, sale_price: Math.round(parseFloat(form.sale_price)), display_order: parseInt(form.display_order), category_id: parseInt(form.category_id),created_by: user?.user_id, modified_by: user?.user_id};
       if (modal === 'create') { await foodMenuAPI.create(payload); showToast('Menu item created!'); }
       else { await foodMenuAPI.update(editId, payload); showToast('Menu item updated!'); }
       setModal(null); load();

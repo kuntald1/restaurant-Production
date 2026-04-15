@@ -70,7 +70,7 @@ export const addItemToOfflineOrder = (offlineId, menuItem) => {
       category_name: menuItem.category_name || '',
     });
   }
-  order.subtotal      = order.items.reduce((s, i) => s + i.unit_price * i.quantity, 0);
+  order.subtotal      = order.items.reduce((s, i) => s + Math.round(i.unit_price) * i.quantity, 0);
   order.total_payable = order.subtotal;
   saveOfflineOrders(orders);
   return order;
@@ -88,7 +88,7 @@ export const removeItemFromOfflineOrder = (offlineId, food_menu_id) => {
   } else {
     order.items = order.items.filter(i => i.food_menu_id !== food_menu_id);
   }
-  order.subtotal      = order.items.reduce((s, i) => s + i.unit_price * i.quantity, 0);
+  order.subtotal      = order.items.reduce((s, i) => s + Math.round(i.unit_price) * i.quantity, 0);
   order.total_payable = order.subtotal;
   saveOfflineOrders(orders);
   return order;
@@ -165,9 +165,9 @@ ${order.customer_name ? `<div class="row"><span class="bold">Customer:</span><sp
 <div class="row"><span class="bold">Date:</span><span>${now}</span></div>
 <div class="line"></div>
 <div class="bold" style="margin-bottom:6px">ITEMS</div>
-${items.map(it => `<div class="row"><span>${it.is_veg === false ? '🔴' : '🟢'} ${it.item_name} x${it.quantity}</span><span>₹${(it.unit_price * it.quantity).toFixed(0)}</span></div>`).join('')}
+${items.map(it => `<div class="row"><span>${it.is_veg === false ? '🔴' : '🟢'} ${it.item_name} x${it.quantity}</span><span>₹${(Math.round(it.unit_price) * it.quantity)}</span></div>`).join('')}
 <div class="line"></div>
-<div class="row"><span>Subtotal</span><span>₹${subtotal.toFixed(0)}</span></div>
+<div class="row"><span>Subtotal</span><span>₹${Math.round(subtotal)}</span></div>
 ${surcharge > 0 ? `<div class="row"><span>Table Surcharge</span><span>+₹${surcharge.toFixed(2)}</span></div>` : ''}
 ${sgstAmt > 0 ? `<div class="row"><span>SGST (${sgstRate}%)</span><span>+₹${sgstAmt.toFixed(2)}</span></div>` : ''}
 ${cgstAmt > 0 ? `<div class="row"><span>CGST (${cgstRate}%)</span><span>+₹${cgstAmt.toFixed(2)}</span></div>` : ''}

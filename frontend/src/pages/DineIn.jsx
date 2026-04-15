@@ -187,7 +187,7 @@ export default function DineIn() {
       await posOrderAPI.addItem(activeOrder.order_id, cid, {
         food_menu_id: menu.food_menu_id || menu.foodmenuid, item_name: menu.name,
         item_code: menu.code, category_id: menu.categoryid || menu.category_id,
-        category_name: '', unit_price: menu.sale_price || menu.saleprice,
+        category_name: '', unit_price: Math.round(parseFloat(menu.sale_price || menu.saleprice || 0)),
         quantity: 1, is_veg: true, modifiers: [],
       });
       setItems(prev => {
@@ -248,7 +248,7 @@ export default function DineIn() {
   });
 
   const currentItems = isOfflineOrder ? (activeOrder?.items || []) : items;
-  const subtotal = currentItems.reduce((s, i) => s + (parseFloat(i.unit_price || i.sale_price || i.saleprice || 0) * i.quantity), 0);
+  const subtotal = currentItems.reduce((s, i) => s + (Math.round(parseFloat(i.unit_price || i.sale_price || i.saleprice || 0)) * i.quantity), 0);
 
   if (!selectedCompany) return (
     <div style={S.page}><div style={S.empty}><h3>No Company Selected</h3></div></div>
