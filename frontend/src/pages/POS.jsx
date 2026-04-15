@@ -1223,7 +1223,7 @@ ${company.hsn ? `<div class="center muted" style="margin-top:4px">HSN: ${company
 
     setSaving(true);
     try {
-      const paid = parseFloat(amountPaid) || 0;
+      const paid = parseFloat(amountPaid) || totalRounded;
       const manualDiscountAmt = parseFloat(discount) || 0;
       const b = await posBillAPI.generate({
         order_id:          activeOrder.order_id,
@@ -1854,8 +1854,14 @@ ${company.hsn ? `<div class="center muted" style="margin-top:4px">HSN: ${company
                     <span>+₹{cgstAmt.toFixed(2)}</span>
                   </div>
                 )}
+                {Math.abs(roundOff) >= 0.01 && (
+                  <div style={{ display:'flex', justifyContent:'space-between', fontSize:13, color:'#6b7280', padding:'2px 0' }}>
+                    <span>Round Off</span>
+                    <span>{roundOff > 0 ? '+' : ''}₹{roundOff.toFixed(2)}</span>
+                  </div>
+                )}
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 800, fontSize: 17, borderTop: '1px solid var(--border)', paddingTop: 8, marginTop: 4 }}>
-                  <span>Total</span><span style={{ color: 'var(--primary)' }}>₹{total.toFixed(2)}</span>
+                  <span>Total</span><span style={{ color: 'var(--primary)' }}>₹{totalRounded.toFixed(2)}</span>
                 </div>
 
               {/* Promo Code field */}
