@@ -2165,9 +2165,9 @@ ${company.hsn ? `<div class="center muted" style="margin-top:4px">HSN: ${company
                 </>
               )}
 
-              {parseFloat(amountPaid) > total && (
+              {parseFloat(amountPaid) > totalRounded && (
                 <div style={{ background: '#f0fdf4', border: '1px solid #a7f3d0', borderRadius: 8, padding: '8px 12px', fontSize: 13, color: 'var(--primary)', fontWeight: 600 }}>
-                  Change to return: ₹{(parseFloat(amountPaid) - total).toFixed(2)}
+                  Change to return: ₹{(parseFloat(amountPaid) - totalRounded).toFixed(2)}
                 </div>
               )}
 
@@ -2287,9 +2287,9 @@ ${company.hsn ? `<div class="center muted" style="margin-top:4px">HSN: ${company
             <div style={{ marginBottom:16 }}>
               <label style={S.label}>Amount Received (₹)</label>
               <input type="number" value={offlineAmountPaid} onChange={e => setOfflineAmountPaid(e.target.value)} style={S.input} />
-              {parseFloat(offlineAmountPaid) > total && (
+              {parseFloat(offlineAmountPaid) > totalRounded && (
                 <div style={{ marginTop:6, fontSize:13, color:'var(--primary)', fontWeight:600 }}>
-                  Change: ₹{(parseFloat(offlineAmountPaid) - total).toFixed(2)}
+                  Change: ₹{(parseFloat(offlineAmountPaid) - totalRounded).toFixed(0)}
                 </div>
               )}
             </div>
@@ -2297,7 +2297,7 @@ ${company.hsn ? `<div class="center muted" style="margin-top:4px">HSN: ${company
               <button style={S.cancelBtn} onClick={() => setShowOfflineBillModal(false)}>Cancel</button>
               <button style={{ ...S.primaryBtn, background:'linear-gradient(135deg,var(--green-700),var(--green-500))', border:'none' }}
                 onClick={() => {
-                  const paid = parseFloat(offlineAmountPaid) || subtotal;
+                  const paid = parseFloat(offlineAmountPaid) || totalRounded;
                   if (isOfflineOrder) {
                     // Offline order — save locally and print (with full amounts for server sync)
                     const updated = markOfflineOrderBilled(activeOrder.offline_id, offlinePayMethod, paid, {

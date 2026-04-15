@@ -71,7 +71,7 @@ export const addItemToOfflineOrder = (offlineId, menuItem) => {
     });
   }
   order.subtotal      = order.items.reduce((s, i) => s + Math.round(i.unit_price) * i.quantity, 0);
-  order.total_payable = order.subtotal;
+  order.total_payable = Math.round(order.subtotal);
   saveOfflineOrders(orders);
   return order;
 };
@@ -89,7 +89,7 @@ export const removeItemFromOfflineOrder = (offlineId, food_menu_id) => {
     order.items = order.items.filter(i => i.food_menu_id !== food_menu_id);
   }
   order.subtotal      = order.items.reduce((s, i) => s + Math.round(i.unit_price) * i.quantity, 0);
-  order.total_payable = order.subtotal;
+  order.total_payable = Math.round(order.subtotal);
   saveOfflineOrders(orders);
   return order;
 };
@@ -134,7 +134,7 @@ export const printOfflineBill = (order, company = {}) => {
   const cgstAmt  = parseFloat(order.cgst_amount || 0);
   const sgstRate = parseFloat(order.sgst_rate || 0);
   const cgstRate = parseFloat(order.cgst_rate || 0);
-  const total    = order.total_payable || (subtotal + surcharge + sgstAmt + cgstAmt);
+  const total    = Math.round(order.total_payable || (subtotal + surcharge + sgstAmt + cgstAmt));
   const now      = new Date().toLocaleString('en-IN');
   w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8">
 <title>Offline Bill</title>
@@ -174,7 +174,7 @@ ${cgstAmt > 0 ? `<div class="row"><span>CGST (${cgstRate}%)</span><span>+₹${cg
 <div class="line"></div>
 <div class="row total-row"><span>TOTAL</span><span>₹${total.toFixed(2)}</span></div>
 <div class="row"><span>Amount Paid</span><span>₹${parseFloat(order.amount_paid || total).toFixed(2)}</span></div>
-${parseFloat(order.amount_paid || 0) > total ? `<div class="row"><span>Change</span><span>₹${(parseFloat(order.amount_paid) - total).toFixed(2)}</span></div>` : ''}
+${parseFloat(order.amount_paid || 0) > total ? `<div class="row"><span>Change</span><span>₹${(parseFloat(order.amount_paid) - total).toFixed(0)}</span></div>` : ''}
 <div class="line"></div>
 <div class="center muted">⚠️ Offline bill — will sync when internet restored</div>
 <div class="center muted">Thank you for dining with us!</div>

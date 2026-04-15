@@ -30,10 +30,9 @@ def _safe_get(obj, attr, default=0):
 # ── Helpers ───────────────────────────────────────────────────
 
 def _recalculate_order_totals(db: Session, order: Order):
-    """Recalculate subtotal and total_payable from active items."""
     active_items = [i for i in order.items if not i.is_cancelled]
-    order.subtotal = sum(float(i.unit_price) * i.quantity for i in active_items)
-    order.total_payable = (
+    order.subtotal = sum(round(float(i.unit_price)) * i.quantity for i in active_items)
+    order.total_payable = round(
         float(order.subtotal)
         - float(order.discount_amount or 0)
         + float(order.service_charge or 0)
@@ -568,7 +567,7 @@ def generate_bill(db: Session, data: BillCreate):
     if promo_amt > 0:
         order.total_payable = max(0, float(order.total_payable) - promo_amt)
     if sgst_amt > 0 or cgst_amt > 0:
-        order.total_payable = float(order.total_payable) + sgst_amt + cgst_amt
+        order.total_payable = round(float(order.total_payable) + sgst_amt + cgst_amt)
 
     db.commit()  # commit recalculated totals first
 
@@ -609,7 +608,7 @@ def generate_bill(db: Session, data: BillCreate):
         discount_percent  = order.discount_percent,
         service_charge    = order.service_charge,
         tax_amount        = order.tax_amount,
-        total_payable     = order.total_payable,
+        total_payable     = round(float(order.total_payable)),
         amount_paid       = data.amount_paid,
         payment_method    = data.payment_method,
         payment_reference = data.payment_reference,
