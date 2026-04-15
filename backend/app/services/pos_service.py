@@ -35,12 +35,12 @@ def _recalculate_order_totals(db: Session, order: Order):
     """Recalculate subtotal and total_payable — always rounded to whole rupees."""
     active_items = [i for i in order.items if not i.is_cancelled]
     order.subtotal = sum(round(float(i.unit_price)) * i.quantity for i in active_items)
+    surcharge = float(_safe_get(order, 'table_surcharge_amount', 0)) or float(order.service_charge or 0)
     order.total_payable = round_half_up(
         float(order.subtotal)
         - float(order.discount_amount or 0)
-        + float(order.service_charge or 0)
+        + surcharge
         + float(order.tax_amount or 0)
-        + float(_safe_get(order, 'table_surcharge_amount', 0))
     )
     db.commit()
     db.refresh(order)
