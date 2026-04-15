@@ -1387,47 +1387,48 @@ ${company.hsn ? `<div class="center muted" style="margin-top:4px">HSN: ${company
   const sm = activeOrder ? STATUS_META[activeOrder.order_status] || STATUS_META.draft : null;
 
   return (
-    <div style={{ display:'flex', flexDirection:'column', height:'calc(100vh - 0px)', overflow:'hidden' }}>
+    <div style={S.root}>
 
-      {/* ── Sync Status Banner — sits below offline red bar, above layout ── */}
-      {(!isOnline && pendingCount > 0) && (
+      {/* ── Sync Status Banners — fixed below the offline red bar ── */}
+      {!isOnline && pendingCount > 0 && (
         <div style={{
-          display:'flex', alignItems:'center', justifyContent:'center', gap:8,
+          position:'fixed', bottom:0, left:240, right:0, zIndex:150,
           background: pendingCount > 50 ? '#7f1d1d' : '#78350f',
           color: pendingCount > 50 ? '#fecaca' : '#fef3c7',
-          padding:'5px 16px', fontSize:12, fontWeight:600, flexShrink:0,
-          borderBottom: '1px solid rgba(0,0,0,0.1)',
+          padding:'4px 16px', fontSize:11, fontWeight:600,
+          display:'flex', alignItems:'center', justifyContent:'center', gap:6,
+          borderTop:'1px solid rgba(255,255,255,0.1)',
         }}>
-          <span>{pendingCount > 50 ? '⚠️' : '📴'}</span>
+          {pendingCount > 50 ? '⚠️' : '📴'}
           <span>{pendingCount} order{pendingCount !== 1 ? 's' : ''} pending sync</span>
           {pendingCount > 50 && <span style={{ opacity:0.8 }}>— Restore internet soon!</span>}
         </div>
       )}
       {isOnline && syncStatus.syncing && (
         <div style={{
-          display:'flex', alignItems:'center', justifyContent:'center', gap:10,
+          position:'fixed', bottom:0, left:240, right:0, zIndex:150,
           background:'#1e3a5f', color:'#bfdbfe',
-          padding:'5px 16px', fontSize:12, fontWeight:600, flexShrink:0,
-          borderBottom: '1px solid rgba(0,0,0,0.1)',
+          padding:'4px 16px', fontSize:11, fontWeight:600,
+          display:'flex', alignItems:'center', justifyContent:'center', gap:8,
+          borderTop:'1px solid rgba(255,255,255,0.1)',
         }}>
-          <span>🔄 Syncing...</span>
-          <div style={{ width:100, height:5, background:'rgba(255,255,255,0.2)', borderRadius:3, overflow:'hidden' }}>
+          <span>🔄 Syncing offline data...</span>
+          <div style={{ width:80, height:4, background:'rgba(255,255,255,0.2)', borderRadius:3, overflow:'hidden' }}>
             <div style={{ height:'100%', background:'#60a5fa', borderRadius:3, transition:'width 0.5s',
-              width: syncStatus.total > 0 ? `${Math.round(((syncStatus.total - syncStatus.remaining) / syncStatus.total) * 100)}%` : '0%'
-            }} />
+              width: syncStatus.total > 0 ? `${Math.round(((syncStatus.total-syncStatus.remaining)/syncStatus.total)*100)}%` : '0%'
+            }}/>
           </div>
-          <span style={{ minWidth:30 }}>{syncStatus.total > 0 ? Math.round(((syncStatus.total - syncStatus.remaining) / syncStatus.total) * 100) : 0}%</span>
-          <span style={{ background:'rgba(255,255,255,0.15)', borderRadius:20, padding:'1px 8px', fontSize:11 }}>
-            {syncStatus.remaining} left
-          </span>
+          <span>{syncStatus.total > 0 ? Math.round(((syncStatus.total-syncStatus.remaining)/syncStatus.total)*100) : 0}%</span>
+          <span style={{ background:'rgba(255,255,255,0.15)', borderRadius:12, padding:'1px 7px' }}>{syncStatus.remaining} left</span>
         </div>
       )}
       {isOnline && showSyncedMsg && (
         <div style={{
-          display:'flex', alignItems:'center', justifyContent:'center', gap:8,
+          position:'fixed', bottom:0, left:240, right:0, zIndex:150,
           background:'#14532d', color:'#bbf7d0',
-          padding:'5px 16px', fontSize:12, fontWeight:600, flexShrink:0,
-          borderBottom: '1px solid rgba(0,0,0,0.1)',
+          padding:'4px 16px', fontSize:11, fontWeight:600,
+          display:'flex', alignItems:'center', justifyContent:'center', gap:6,
+          borderTop:'1px solid rgba(255,255,255,0.1)',
         }}>
           ✅ All offline data synced successfully!
         </div>
