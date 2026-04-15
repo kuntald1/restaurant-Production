@@ -397,7 +397,7 @@ export default function OrdersReport() {
                                   const tax = Number(det.bill.tax_amount||0);
                                   const sg  = Number(det.bill.sgst_amount||0);
                                   const cg  = Number(det.bill.cgst_amount||0);
-                                  return fmt(Math.max(0, s - d - p + sur + tax + sg + cg));
+                                  return fmt(Math.round(Number(det.bill.total_payable||0)));
                                 })()],
                                 ['Paid At',   det.bill.paid_at ? new Date(det.bill.paid_at).toLocaleString('en-IN',{dateStyle:'short',timeStyle:'short'}) : '—'],
                                 ['Prints',    det.bill.print_count],

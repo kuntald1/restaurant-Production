@@ -468,7 +468,7 @@ export default function SalesReport() {
                         const tax = Number(b?.tax_amount||0);
                         const sg  = Number(b?.sgst_amount||0);
                         const cg  = Number(b?.cgst_amount||0);
-                        return fmt2(Math.max(0, s - d - p + sur + tax + sg + cg));
+                        return fmt2(Math.round(Number(b?.total_payable||0)));
                       })()}</span>
                     </div>
                   </div>
