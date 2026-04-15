@@ -2360,6 +2360,7 @@ ${company.hsn ? `<div class="center muted" style="margin-top:4px">HSN: ${company
               ))}
               <div style={{ borderTop:'1px solid var(--border)', paddingTop:8, marginTop:8 }}>
                 <div style={{ display:'flex', justifyContent:'space-between', fontSize:13, marginBottom:4 }}><span>Subtotal</span><span>₹{subtotal.toFixed(2)}</span></div>
+                {discountAmt > 0 && <div style={{ display:'flex', justifyContent:'space-between', fontSize:13, marginBottom:4, color:'#991b1b' }}><span>Discount</span><span>−₹{discountAmt.toFixed(2)}</span></div>}
                 {surcharge > 0 && <div style={{ display:'flex', justifyContent:'space-between', fontSize:13, marginBottom:4, color:'#92400e' }}><span>{activeOrder?.table_surcharge_label || 'Table Surcharge'}</span><span>+₹{surcharge.toFixed(2)}</span></div>}
                 {sgstAmt > 0 && <div style={{ display:'flex', justifyContent:'space-between', fontSize:13, marginBottom:4, color:'#1e40af' }}><span>SGST ({sgstRate}%)</span><span>+₹{sgstAmt.toFixed(2)}</span></div>}
                 {cgstAmt > 0 && <div style={{ display:'flex', justifyContent:'space-between', fontSize:13, marginBottom:4, color:'#1e40af' }}><span>CGST ({cgstRate}%)</span><span>+₹{cgstAmt.toFixed(2)}</span></div>}
