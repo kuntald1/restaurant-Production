@@ -7,7 +7,7 @@ from app.services import companymenu_service
 
 
 router = APIRouter(
-    prefix="/menu",
+    prefix="/companymenu",
     tags=["Menu"]
 )
 

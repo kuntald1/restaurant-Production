@@ -83,7 +83,7 @@ export const qrAPI = {
 
 // Menu
 export const menuAPI = {
-  getByCompany: (companyId) => request('GET', `/menu/${companyId}`),
+  getByCompany: (companyId) => request('GET', `/companymenu/${companyId}`),
 };
 
 // Food Category
