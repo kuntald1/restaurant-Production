@@ -144,7 +144,7 @@ export default function Users() {
     { key: 'first_name', label: 'Name', render: (v, row) => (
         <div>
           <div>{`${v} ${row.last_name || ''}`}</div>
-          {row.company_unique_id !== cid && (
+          {row.company_unique_id !== selectedCompany?.company_unique_id && (
             <div style={{ fontSize:11, color:'var(--text-3)' }}>
               {allCompanies?.find(c => c.company_unique_id === row.company_unique_id)?.name || 'Branch'}
             </div>
@@ -195,7 +195,9 @@ export default function Users() {
               <div style={{ display:'flex', gap:'0.5rem', marginTop:'0.5rem' }}>
                 {viewUser.is_super_admin && <Badge variant="warning">Super Admin</Badge>}
                 {viewUser.is_admin       && <Badge variant="info">Admin</Badge>}
-                {!viewUser.is_admin && !viewUser.is_super_admin && <Badge>Staff / User</Badge>}
+                {!viewUser.is_admin && !viewUser.is_super_admin && (
+                  <Badge>{roles.find(r => r.userrole_id === viewUser.role_id)?.role_name || 'Staff'}</Badge>
+                )}
                 <Badge variant={viewUser.is_active ? 'success' : 'error'}>{viewUser.is_active ? 'Active' : 'Inactive'}</Badge>
               </div>
             </div>
