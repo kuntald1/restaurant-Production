@@ -141,15 +141,25 @@ export default function Users() {
 
   const cols = [
     { key: 'user_id',    label: 'ID' },
-    { key: 'first_name', label: 'Name',   render: (v, row) => `${v} ${row.last_name || ''}` },
+    { key: 'first_name', label: 'Name', render: (v, row) => (
+        <div>
+          <div>{`${v} ${row.last_name || ''}`}</div>
+          {row.company_unique_id !== cid && (
+            <div style={{ fontSize:11, color:'var(--text-3)' }}>
+              {allCompanies?.find(c => c.company_unique_id === row.company_unique_id)?.name || 'Branch'}
+            </div>
+          )}
+        </div>
+    )},
     { key: 'username',   label: 'Username' },
     { key: 'email',      label: 'Email' },
     { key: 'employment_type', label: 'Type', render: (v) => v ? <Badge variant="info">{v}</Badge> : '—' },
-    { key: 'is_admin',   label: 'Role', render: (v, row) =>
-        row.is_super_admin ? <Badge variant="warning">Super Admin</Badge>
-        : v ? <Badge variant="info">Admin</Badge>
-        : <Badge>Staff</Badge>
-    },
+    { key: 'is_admin',   label: 'Role', render: (v, row) => {
+        if (row.is_super_admin) return <Badge variant="warning">Super Admin</Badge>;
+        if (v) return <Badge variant="info">Admin</Badge>;
+        const role = roles.find(r => r.userrole_id === row.role_id);
+        return <Badge>{role ? role.role_name : 'Staff'}</Badge>;
+    }},
     { key: 'is_active',  label: 'Status', render: (v) => <Badge variant={v ? 'success' : 'error'}>{v ? 'Active' : 'Inactive'}</Badge> },
   ];
 

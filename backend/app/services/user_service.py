@@ -104,10 +104,18 @@ def get_user(db: Session, user_id: int):
     return db.query(User).filter(User.user_id == user_id, User.is_active == True).first()
 
 
-# Get All Users by Company
+# Get All Users by Company (includes child branch users)
 def get_all_users(db: Session, company_id: int):
+    from app.models.company_model import Company
+    # Get all child company IDs where parent = company_id
+    child_companies = db.query(Company.company_unique_id).filter(
+        Company.parant_company_unique_id == company_id
+    ).all()
+    child_ids = [c.company_unique_id for c in child_companies]
+    all_ids = [company_id] + child_ids
+
     return db.query(User).filter(
-        User.company_unique_id == company_id,
+        User.company_unique_id.in_(all_ids),
         User.is_active == True
     ).all()
 
