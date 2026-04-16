@@ -1,127 +1,40 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useApp } from '../context/useApp';
 import { posTableAPI, posOrderAPI, foodMenuAPI, foodCategoryAPI, crmCustomerAPI } from '../services/api';
-import {
-  cacheMenu, cacheCategories, cacheTables,
-  getCachedMenu, getCachedCategories, getCachedTables,
-  createOfflineOrder, addItemToOfflineOrder, removeItemFromOfflineOrder,
-  markOfflineOrderBilled, printOfflineBill,
-  getUnsyncedOfflineOrders, markOfflineOrderSynced,
-} from '../services/offlineStore';
-
-// ── Offline Banner ────────────────────────────────────────────
-function OfflineBanner() {
-  const [isOnline, setIsOnline] = useState(navigator.onLine);
-  const [showBack, setShowBack] = useState(false);
-  useEffect(() => {
-    const goOffline = () => { setIsOnline(false); setShowBack(false); };
-    const goOnline  = () => { setIsOnline(true); setShowBack(true); setTimeout(() => setShowBack(false), 4000); };
-    window.addEventListener('offline', goOffline);
-    window.addEventListener('online',  goOnline);
-    return () => { window.removeEventListener('offline', goOffline); window.removeEventListener('online', goOnline); };
-  }, []);
-  if (isOnline && !showBack) return null;
-  return (
-    <div style={{ position:'fixed', top:0, left:0, right:0, zIndex:9999, padding:'10px 20px', textAlign:'center', fontWeight:600, fontSize:14, display:'flex', alignItems:'center', justifyContent:'center', gap:8, background: isOnline ? '#16a34a' : '#dc2626', color:'#fff', boxShadow:'0 2px 8px rgba(0,0,0,0.2)' }}>
-      {isOnline ? '✅ Back online! Syncing orders...' : '📴 Offline — Cash & UPI orders still work!'}
-    </div>
-  );
-}
 
 export default function DineIn() {
   const { selectedCompany, user, showToast } = useApp();
   const cid = selectedCompany?.company_unique_id;
 
-  const [tables, setTables]               = useState([]);
-  const [activeOrder, setActiveOrder]     = useState(null);
-  const [isOfflineOrder, setIsOfflineOrder] = useState(false);
-  const [items, setItems]                 = useState([]);
-  const [menus, setMenus]                 = useState([]);
-  const [cats, setCats]                   = useState([]);
-  const [selCat, setSelCat]               = useState('all');
-  const [search, setSearch]               = useState('');
-  const [phone, setPhone]                 = useState('');
-  const [customer, setCustomer]           = useState(null);
-  const [showCustForm, setShowCustForm]   = useState(false);
-  const [newCust, setNewCust]             = useState({ name: '', phone: '', email: '' });
-  const [loading, setLoading]             = useState(false);
-  const [step, setStep]                   = useState('tables');
-  const [isOnline, setIsOnline]           = useState(navigator.onLine);
-  const [showBillModal, setShowBillModal] = useState(false);
-  const [payMethod, setPayMethod]         = useState('cash');
-  const [amountPaid, setAmountPaid]       = useState('');
-
-  // Track online/offline
-  useEffect(() => {
-    const goOffline = () => setIsOnline(false);
-    const goOnline  = () => { setIsOnline(true); syncOfflineOrders(); };
-    window.addEventListener('offline', goOffline);
-    window.addEventListener('online',  goOnline);
-    return () => { window.removeEventListener('offline', goOffline); window.removeEventListener('online', goOnline); };
-  }, []);
-
-  // ── Auto-sync when back online ────────────────────────────
-  const syncOfflineOrders = async () => {
-    const pending = getUnsyncedOfflineOrders();
-    if (!pending.length) return;
-    showToast(`🔄 Syncing ${pending.length} offline order(s)...`);
-    let synced = 0;
-    for (const order of pending) {
-      try {
-        const serverOrder = await posOrderAPI.create({
-          company_unique_id: order.company_unique_id,
-          order_type:        order.order_type,
-          table_id:          order.table_id || undefined,
-          covers:            order.covers || 1,
-          customer_name:     order.customer_name || '',
-          customer_phone:    order.customer_phone || '',
-          created_by:        order.created_by || null,
-        });
-        for (const item of order.items || []) {
-          await posOrderAPI.addItem(serverOrder.order_id, order.company_unique_id, {
-            food_menu_id:  item.food_menu_id,
-            item_name:     item.item_name,
-            item_code:     item.item_code || '',
-            category_name: item.category_name || '',
-            unit_price:    item.unit_price,
-            quantity:      item.quantity,
-            is_veg:        item.is_veg !== false,
-          });
-        }
-        markOfflineOrderSynced(order.offline_id);
-        synced++;
-      } catch (e) { console.error('Sync failed:', order.offline_id, e); }
-    }
-    if (synced > 0) showToast(`✅ ${synced} offline order(s) synced to server!`);
-  };
+  const [tables, setTables]             = useState([]);
+  const [activeOrder, setActiveOrder]   = useState(null);
+  const [items, setItems]               = useState([]);
+  const [menus, setMenus]               = useState([]);
+  const [cats, setCats]                 = useState([]);
+  const [selCat, setSelCat]             = useState('all');
+  const [search, setSearch]             = useState('');
+  const [phone, setPhone]               = useState('');
+  const [customer, setCustomer]         = useState(null);
+  const [showCustForm, setShowCustForm] = useState(false);
+  const [newCust, setNewCust]           = useState({ name: '', phone: '', email: '' });
+  const [loading, setLoading]           = useState(false);
+  const [step, setStep]                 = useState('tables');
 
   const loadTables = useCallback(async () => {
     if (!cid) return;
     try {
       const t = await posTableAPI.getAll(cid);
       setTables(t.filter(t => t.table_status === 'free' && t.is_active));
-      cacheTables(t);
-    } catch {
-      const cached = getCachedTables();
-      if (cached.length > 0) setTables(cached.filter(t => t.table_status === 'free' && t.is_active));
-    }
+    } catch { showToast('Failed to load tables', 'error'); }
   }, [cid]);
 
   const loadMenus = useCallback(async () => {
     if (!cid) return;
     try {
       const [m, c] = await Promise.all([foodMenuAPI.getAll(cid), foodCategoryAPI.getAll(cid)]);
-      const filtered = m.filter(x => x.IsActive && x.is_available);
-      setMenus(filtered); setCats(c);
-      cacheMenu(filtered); cacheCategories(c);
-    } catch {
-      const cachedMenus = getCachedMenu();
-      const cachedCats  = getCachedCategories();
-      if (cachedMenus.length > 0) {
-        setMenus(cachedMenus); setCats(cachedCats);
-        showToast('📴 Showing cached menu (offline)', 'info');
-      }
-    }
+      setMenus(m.filter(x => x.IsActive && x.is_available));
+      setCats(c);
+    } catch { showToast('Failed to load menu', 'error'); }
   }, [cid]);
 
   useEffect(() => { loadTables(); loadMenus(); }, [loadTables, loadMenus]);
@@ -129,37 +42,19 @@ export default function DineIn() {
   // ── Select Table ─────────────────────────────────────────
   const selectTable = async (table) => {
     setLoading(true);
-    if (isOnline) {
-      try {
-        const order = await posOrderAPI.create({
-          company_unique_id: cid, order_type: 'dine_in',
-          table_id: table.table_id, covers: 2, created_by: user?.user_id,
-        });
-        setActiveOrder(order); setIsOfflineOrder(false); setItems([]); setStep('order');
-      } catch {
-        showToast('Server error — creating offline order', 'error');
-        createLocalOrder(table);
-      }
-    } else {
-      createLocalOrder(table);
-    }
+    try {
+      const order = await posOrderAPI.create({
+        company_unique_id: cid, order_type: 'dine_in',
+        table_id: table.table_id, covers: 2, created_by: user?.user_id,
+      });
+      setActiveOrder(order); setItems([]); setStep('order');
+    } catch { showToast('Failed to create order', 'error'); }
     setLoading(false);
-  };
-
-  const createLocalOrder = (table) => {
-    const order = createOfflineOrder({
-      company_unique_id: cid, order_type: 'dine_in',
-      table_id: table.table_id, table_name: table.table_name,
-      covers: 2, created_by: user?.user_id,
-    });
-    setActiveOrder(order); setIsOfflineOrder(true); setItems([]); setStep('order');
-    showToast('📴 Offline order created — syncs when online');
   };
 
   // ── Customer Search ───────────────────────────────────────
   const searchCustomer = async () => {
     if (!phone) return;
-    if (!isOnline) { showToast('📴 Customer search not available offline', 'error'); return; }
     try {
       const c = await crmCustomerAPI.lookupPhone(cid, phone.replace(/[^0-9]/g, ''));
       setCustomer(c); setShowCustForm(false);
@@ -168,7 +63,6 @@ export default function DineIn() {
   };
 
   const saveNewCustomer = async () => {
-    if (!isOnline) { showToast('📴 Cannot save customer offline', 'error'); return; }
     try {
       const c = await crmCustomerAPI.create(cid, { ...newCust, company_unique_id: cid });
       setCustomer(c); setShowCustForm(false); showToast('Customer saved!');
@@ -178,11 +72,6 @@ export default function DineIn() {
   // ── Add Item ─────────────────────────────────────────────
   const addItem = async (menu) => {
     if (!activeOrder) return;
-    if (isOfflineOrder) {
-      const updated = addItemToOfflineOrder(activeOrder.offline_id, menu);
-      if (updated) { setActiveOrder({ ...updated }); }
-      return;
-    }
     try {
       await posOrderAPI.addItem(activeOrder.order_id, cid, {
         food_menu_id: menu.food_menu_id || menu.foodmenuid, item_name: menu.name,
@@ -201,11 +90,6 @@ export default function DineIn() {
   // ── Remove Item ──────────────────────────────────────────
   const removeItem = async (item) => {
     if (!activeOrder) return;
-    if (isOfflineOrder) {
-      const updated = removeItemFromOfflineOrder(activeOrder.offline_id, item.food_menu_id);
-      if (updated) { setActiveOrder({ ...updated }); }
-      return;
-    }
     try {
       const orderData = await posOrderAPI.getById(activeOrder.order_id);
       const orderItem = orderData.items?.find(i => i.food_menu_id === item.food_menu_id);
@@ -220,24 +104,12 @@ export default function DineIn() {
     } catch { showToast('Failed to remove item', 'error'); }
   };
 
-  // ── Generate Bill (offline only) ─────────────────────────
-  const generateBill = () => {
-    const paid = parseFloat(amountPaid) || subtotal;
-    const updated = markOfflineOrderBilled(activeOrder.offline_id, payMethod, paid);
-    if (updated) {
-      printOfflineBill(updated, selectedCompany || {});
-      showToast('🧾 Offline bill generated & printed!');
-      setShowBillModal(false);
-      done();
-    }
-  };
-
   // ── Done ─────────────────────────────────────────────────
   const done = () => {
     showToast('Order saved!');
-    setStep('tables'); setActiveOrder(null); setIsOfflineOrder(false);
+    setStep('tables'); setActiveOrder(null);
     setItems([]); setCustomer(null); setPhone('');
-    setShowCustForm(false); setShowBillModal(false);
+    setShowCustForm(false);
     loadTables();
   };
 
@@ -247,8 +119,7 @@ export default function DineIn() {
     return matchCat && matchSearch;
   });
 
-  const currentItems = isOfflineOrder ? (activeOrder?.items || []) : items;
-  const subtotal = currentItems.reduce((s, i) => s + (Math.round(parseFloat(i.unit_price || i.sale_price || i.saleprice || 0)) * i.quantity), 0);
+  const subtotal = items.reduce((s, i) => s + (Math.round(parseFloat(i.unit_price || i.sale_price || i.saleprice || 0)) * i.quantity), 0);
 
   if (!selectedCompany) return (
     <div style={S.page}><div style={S.empty}><h3>No Company Selected</h3></div></div>
@@ -257,12 +128,6 @@ export default function DineIn() {
   // ── TABLE SELECTION ──
   if (step === 'tables') return (
     <div style={S.page}>
-      <OfflineBanner />
-      {!isOnline && (
-        <div style={{ background:'#fff3cd', border:'1px solid #ffc107', borderRadius:8, padding:'10px 16px', marginBottom:16, fontSize:13, color:'#856404' }}>
-          📴 <strong>Offline Mode</strong> — You can still take orders and accept Cash / UPI payments!
-        </div>
-      )}
       <div style={S.header}>
         <h2 style={S.title}>🍽️ Dine In — Select Table</h2>
         <p style={S.sub}>Select a free table to start an order</p>
@@ -276,9 +141,7 @@ export default function DineIn() {
             <div style={S.tableName}>{t.table_name}</div>
             <div style={S.tableSub}>{t.seats} seats</div>
             {t.surcharge_amount > 0 && <div style={S.surcharge}>+₹{t.surcharge_amount} {t.surcharge_label}</div>}
-            <div style={{ ...S.freeTag, background: isOnline ? '#e8f5e9' : '#fff3cd', color: isOnline ? '#2e7d32' : '#856404' }}>
-              {isOnline ? 'Free' : '📴 Tap to order'}
-            </div>
+            <div style={S.freeTag}>Free</div>
           </div>
         ))}
       </div>
@@ -288,19 +151,12 @@ export default function DineIn() {
   // ── ORDER SCREEN ──
   return (
     <div style={S.orderPage}>
-      <OfflineBanner />
-
       {/* LEFT — Cart */}
       <div style={S.left}>
         <div style={S.orderHeader}>
           <div>
-            <div style={S.orderNum}>{isOfflineOrder ? '📴 ' : ''}Order {activeOrder?.order_number}</div>
+            <div style={S.orderNum}>Order {activeOrder?.order_number}</div>
             <div style={S.orderSub}>Table: {activeOrder?.table_name || tables.find(t => t.table_id === activeOrder?.table_id)?.table_name || '—'}</div>
-            {isOfflineOrder && (
-              <div style={{ fontSize:11, color:'#856404', background:'#fff3cd', padding:'2px 6px', borderRadius:4, marginTop:4, display:'inline-block' }}>
-                📴 Offline — will sync when online
-              </div>
-            )}
           </div>
           <button style={S.doneBtn} onClick={done}>✓ Done</button>
         </div>
@@ -309,24 +165,22 @@ export default function DineIn() {
         <div style={S.custBox}>
           <div style={S.custRow}>
             <input style={S.phoneInput} placeholder="Customer phone number..." value={phone} onChange={e => setPhone(e.target.value)} onKeyDown={e => e.key === 'Enter' && searchCustomer()} />
-            <button style={{ ...S.searchBtn, opacity: !isOnline ? 0.5 : 1 }} onClick={searchCustomer} disabled={!isOnline}>
-              {isOnline ? 'Search' : '📴'}
-            </button>
+            <button style={S.searchBtn} onClick={searchCustomer}>Search</button>
           </div>
           {customer && <div style={S.custFound}>✅ {customer.name} — {customer.phone}</div>}
           {showCustForm && (
             <div style={S.custForm}>
               <input style={S.inp} placeholder="Name *" value={newCust.name} onChange={e => setNewCust(p => ({ ...p, name: e.target.value }))} />
               <input style={S.inp} placeholder="Email" value={newCust.email} onChange={e => setNewCust(p => ({ ...p, email: e.target.value }))} />
-              <button style={S.saveBtn} onClick={saveNewCustomer} disabled={!isOnline}>Save Customer</button>
+              <button style={S.saveBtn} onClick={saveNewCustomer}>Save Customer</button>
             </div>
           )}
         </div>
 
         {/* Items List */}
         <div style={S.cartList}>
-          {currentItems.length === 0 && <div style={S.emptyCart}>Add items from the menu →</div>}
-          {currentItems.map(item => (
+          {items.length === 0 && <div style={S.emptyCart}>Add items from the menu →</div>}
+          {items.map(item => (
             <div key={item.food_menu_id} style={S.cartItem}>
               <div style={S.cartName}>{item.item_name || item.name}</div>
               <div style={S.cartQtyRow}>
@@ -334,26 +188,16 @@ export default function DineIn() {
                 <span style={S.qty}>{item.quantity}</span>
                 <button style={S.qtyBtn} onClick={() => addItem(item)}>+</button>
               </div>
-              <div style={S.cartPrice}>₹{(parseFloat(item.unit_price || item.sale_price || item.saleprice || 0) * item.quantity).toFixed(2)}</div>
+              <div style={S.cartPrice}>₹{(Math.round(parseFloat(item.unit_price || item.sale_price || item.saleprice || 0)) * item.quantity).toFixed(0)}</div>
             </div>
           ))}
         </div>
 
         {/* Subtotal */}
         <div style={S.total}>
-          <span>Subtotal ({currentItems.length} items)</span>
-          <span>₹{subtotal.toFixed(2)}</span>
+          <span>Subtotal ({items.length} items)</span>
+          <span>₹{subtotal.toFixed(0)}</span>
         </div>
-
-        {/* Bill Button — for offline orders only */}
-        {isOfflineOrder && currentItems.length > 0 && (
-          <button
-            style={{ width:'100%', padding:'12px', background:'linear-gradient(135deg,#1a3a1c,#2d6a30)', color:'#fff', border:'none', borderRadius:10, fontWeight:700, fontSize:15, cursor:'pointer', marginTop:8 }}
-            onClick={() => { setAmountPaid(subtotal.toFixed(2)); setShowBillModal(true); }}
-          >
-            🧾 Generate Bill · ₹{subtotal.toFixed(2)}
-          </button>
-        )}
       </div>
 
       {/* RIGHT — Menu */}
@@ -384,59 +228,6 @@ export default function DineIn() {
           ))}
         </div>
       </div>
-
-      {/* ── OFFLINE BILL MODAL ── */}
-      {showBillModal && isOfflineOrder && (
-        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.5)', zIndex:1000, display:'flex', alignItems:'center', justifyContent:'center', padding:20 }}>
-          <div style={{ background:'#fff', borderRadius:16, padding:24, width:'90%', maxWidth:380, boxShadow:'0 20px 60px rgba(0,0,0,0.3)' }}>
-            <div style={{ fontWeight:700, fontSize:18, marginBottom:16 }}>🧾 Generate Bill</div>
-            <div style={{ background:'#fff3cd', border:'1px solid #ffc107', borderRadius:8, padding:'8px 12px', marginBottom:16, fontSize:13, color:'#856404' }}>
-              📴 Offline Bill — will sync to server when internet is restored
-            </div>
-            {/* Items Summary */}
-            <div style={{ background:'#f8f9fa', borderRadius:8, padding:12, marginBottom:16 }}>
-              {currentItems.map(item => (
-                <div key={item.food_menu_id} style={{ display:'flex', justifyContent:'space-between', fontSize:13, marginBottom:4 }}>
-                  <span>{item.item_name || item.name} x{item.quantity}</span>
-                  <span>₹{(parseFloat(item.unit_price || item.sale_price || 0) * item.quantity).toFixed(0)}</span>
-                </div>
-              ))}
-              <div style={{ display:'flex', justifyContent:'space-between', fontWeight:700, fontSize:16, borderTop:'1px solid #ddd', paddingTop:8, marginTop:8 }}>
-                <span>Total</span><span style={{ color:'#1a3a1c' }}>₹{subtotal.toFixed(2)}</span>
-              </div>
-            </div>
-            {/* Payment Method */}
-            <div style={{ marginBottom:14 }}>
-              <div style={{ fontSize:12, fontWeight:600, color:'#555', marginBottom:8 }}>Payment Method</div>
-              <div style={{ display:'flex', gap:8 }}>
-                {[['cash','💵 Cash'],['upi','📲 UPI']].map(([id, label]) => (
-                  <button key={id}
-                    style={{ flex:1, padding:'10px', border:`2px solid ${payMethod===id?'#1a3a1c':'#ddd'}`, borderRadius:8, background:payMethod===id?'#e8f5e9':'#fff', color:payMethod===id?'#1a3a1c':'#555', fontWeight:payMethod===id?700:400, cursor:'pointer', fontSize:14 }}
-                    onClick={() => setPayMethod(id)}>{label}
-                  </button>
-                ))}
-              </div>
-            </div>
-            {/* Amount Paid */}
-            <div style={{ marginBottom:16 }}>
-              <div style={{ fontSize:12, fontWeight:600, color:'#555', marginBottom:6 }}>Amount Received (₹)</div>
-              <input type="number" value={amountPaid} onChange={e => setAmountPaid(e.target.value)}
-                style={{ width:'100%', padding:'10px 12px', border:'1.5px solid #ddd', borderRadius:8, fontSize:16, outline:'none' }} />
-              {parseFloat(amountPaid) > subtotal && (
-                <div style={{ marginTop:6, fontSize:13, color:'#1a3a1c', fontWeight:600 }}>
-                  Change: ₹{(parseFloat(amountPaid) - subtotal).toFixed(2)}
-                </div>
-              )}
-            </div>
-            <div style={{ display:'flex', gap:8 }}>
-              <button style={{ flex:1, padding:'10px', border:'1px solid #ddd', borderRadius:8, background:'#fff', cursor:'pointer', fontSize:14 }} onClick={() => setShowBillModal(false)}>Cancel</button>
-              <button style={{ flex:2, padding:'10px', background:'linear-gradient(135deg,#1a3a1c,#2d6a30)', color:'#fff', border:'none', borderRadius:8, fontWeight:700, fontSize:14, cursor:'pointer' }} onClick={generateBill}>
-                🖨️ Print & Done
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
