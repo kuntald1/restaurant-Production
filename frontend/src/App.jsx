@@ -32,6 +32,8 @@ import GenericPage from './pages/GenericPage';
 import DineIn from './pages/DineIn';
 import MenuPublic from './pages/MenuPublic';
 import QRGenerator from './pages/QRGenerator';
+import WhatsAppLogs from './pages/WhatsAppLogs';
+import ContactLeads from './pages/ContactLeads';
 
 const URL_TO_PAGE = {
   '/home':                        Dashboard,
@@ -72,6 +74,8 @@ const URL_TO_PAGE = {
   '/dine-in':                     DineIn,
   '/menu':                        MenuPublic,
   '/qr-generator':                QRGenerator,
+  '/whatsapp-logs':               WhatsAppLogs,
+  '/contact-leads':               ContactLeads,
 };
 
 // ── Offline Banner ────────────────────────────────────────────
