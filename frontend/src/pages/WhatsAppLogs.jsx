@@ -1,11 +1,14 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useApp } from '../context/useApp';
-import { request } from '../services/api';
 import { Table, Badge, Spinner, PageHeader } from '../components/UI';
 
+const API_BASE = '';
 const whatsappAPI = {
-  getLogs: (companyId, isSuperAdmin) =>
-    request('GET', `/whatsapplogs/getlogs/${companyId}?is_super_admin=${isSuperAdmin}&limit=500`),
+  getLogs: async (companyId, isSuperAdmin) => {
+    const res = await fetch(`${API_BASE}/whatsapplogs/getlogs/${companyId}?is_super_admin=${isSuperAdmin}&limit=500`);
+    if (!res.ok) throw new Error('Failed');
+    return res.json();
+  },
 };
 
 const TYPE_LABELS = {
