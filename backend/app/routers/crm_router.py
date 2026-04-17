@@ -69,9 +69,15 @@ def upsert_sms_settings(company_id: int, data: SmsSettingsIn, db: Session = Depe
 # ─────────────────── WHATSAPP SEND ───────────────────
 
 class WhatsAppSendIn(BaseModel):
-    company_id: int
-    to_phone:   str
-    message:    str
+    company_id  : int
+    to_phone    : str
+    message     : str
+    order_id    : Optional[int] = None
+    order_number: Optional[str] = None
+    bill_id     : Optional[int] = None
+    bill_number : Optional[str] = None
+    message_type: Optional[str] = 'bill'   # 'bill' | 'payment_request' | 'receipt'
+    sent_by     : Optional[int] = None
 
 @router.post("/whatsapp/send")
 def send_whatsapp(data: WhatsAppSendIn, db: Session = Depends(get_db)):
@@ -102,6 +108,26 @@ def send_whatsapp(data: WhatsAppSendIn, db: Session = Depends(get_db)):
             to=to_wa,
             body=data.message
         )
+        # ── Log WhatsApp message ──────────────────────────────────────────
+        try:
+            from app.models.whatsapp_log_model import WhatsAppLog
+            log = WhatsAppLog(
+                company_unique_id = data.company_id,
+                order_id          = data.order_id,
+                order_number      = data.order_number,
+                bill_id           = data.bill_id,
+                bill_number       = data.bill_number,
+                recipient_phone   = data.to_phone,
+                message_type      = data.message_type or 'bill',
+                message_sid       = message.sid,
+                status            = message.status or 'sent',
+                sent_by           = data.sent_by,
+            )
+            db.add(log)
+            db.commit()
+        except Exception as log_err:
+            print(f"WhatsApp log error (non-fatal): {log_err}")
+        # ─────────────────────────────────────────────────────────────────
         return {"success": True, "sid": message.sid, "status": message.status}
 
     except Exception as e:

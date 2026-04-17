@@ -1080,9 +1080,15 @@ ${company.hsn ? `<div class="center muted" style="margin-top:4px">HSN: ${company
     // Send via Twilio backend
     try {
       await smsSettingsAPI.sendWhatsApp({
-        company_id: parseInt(cid),
-        to_phone:   customerPhone,
-        message:    msg,
+        company_id:   parseInt(cid),
+        to_phone:     customerPhone,
+        message:      msg,
+        order_id:     billObj?.order_id   || activeOrder?.order_id,
+        order_number: billObj?.order_number || activeOrder?.order_number,
+        bill_id:      billObj?.bill_id,
+        bill_number:  billObj?.bill_number,
+        message_type: 'bill',
+        sent_by:      user?.user_id,
       });
       showToast('📱 WhatsApp bill sent!');
     } catch (err) {
@@ -1163,9 +1169,13 @@ ${company.hsn ? `<div class="center muted" style="margin-top:4px">HSN: ${company
 
       // Step 3 — Send on WhatsApp
       await smsSettingsAPI.sendWhatsApp({
-        company_id: parseInt(cid),
-        to_phone:   phone,
-        message:    msg,
+        company_id:   parseInt(cid),
+        to_phone:     phone,
+        message:      msg,
+        order_id:     activeOrder?.order_id,
+        order_number: activeOrder?.order_number,
+        message_type: 'payment_request',
+        sent_by:      user?.user_id,
       });
       showToast('📲 Payment link sent on WhatsApp! Waiting for customer payment…');
 
