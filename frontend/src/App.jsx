@@ -104,27 +104,13 @@ function OfflineBanner() {
 
   return (
     <div style={{
-      position: 'fixed',
-      top: 0,
-      left: 0,
-      right: 0,
-      zIndex: 9999,
-      padding: '10px 20px',
-      textAlign: 'center',
-      fontWeight: 600,
-      fontSize: 14,
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      gap: 8,
-      background: isOnline ? '#16a34a' : '#dc2626',
-      color: '#fff',
-      boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
-      transition: 'background 0.3s',
+      position: 'fixed', top: 0, left: 0, right: 0, zIndex: 9999,
+      padding: '10px 20px', textAlign: 'center', fontWeight: 600, fontSize: 14,
+      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+      background: isOnline ? '#16a34a' : '#dc2626', color: '#fff',
+      boxShadow: '0 2px 8px rgba(0,0,0,0.2)', transition: 'background 0.3s',
     }}>
-      {isOnline
-        ? '✅ Back online! Syncing data...'
-        : '📴 You are offline — Cash & UPI payments still work'}
+      {isOnline ? '✅ Back online! Syncing data...' : '📴 You are offline — Cash & UPI payments still work'}
     </div>
   );
 }
@@ -132,14 +118,48 @@ function OfflineBanner() {
 function AppInner() {
   const { user, logout, showToast } = useApp();
   useKeepAlive();
-  const [activePage, setActivePage] = useState('/home');
-  const [activeMenu, setActiveMenu] = useState(null);
 
-  // Public menu page - no login required
+  // ── All hooks MUST be declared before any conditional return ──────────
+  const [activePage,  setActivePage]  = useState('/home');
+  const [activeMenu,  setActiveMenu]  = useState(null);
+  const [subExpired,  setSubExpired]  = useState(false);
+  const [subDaysLeft, setSubDaysLeft] = useState(null);
+
+  // ── Subscription expiry check ─────────────────────────────────────────
+  useEffect(() => {
+    // SuperAdmin is never blocked
+    if (!user || user.is_super_admin) return;
+    const cid = user.company_unique_id;
+    fetch(`/subscriptions/getbycompany/${cid}`)
+      .then(r => r.ok ? r.json() : [])
+      .then(subs => {
+        const active = (subs || []).filter(s => s.status === 'active');
+        if (active.length === 0) {
+          setSubExpired(true);
+          return;
+        }
+        // Find latest end_date among active subs
+        const latest = active.reduce((a, b) =>
+          new Date(a.end_date) > new Date(b.end_date) ? a : b
+        );
+        const days = Math.ceil(
+          (new Date(latest.end_date) - new Date()) / (1000 * 60 * 60 * 24)
+        );
+        if (days < 0) {
+          setSubExpired(true);
+        } else if (days <= 3) {
+          setSubDaysLeft(days);
+        }
+      })
+      .catch(() => {});
+  }, [user]);
+
+  // ── Public menu — no login required ──────────────────────────────────
   if (window.location.pathname.startsWith('/menu/')) {
     return <MenuPublic />;
   }
 
+  // ── Not logged in ─────────────────────────────────────────────────────
   if (!user) return <Login />;
 
   const handleMenuChange = (menuurl, menuItem) => {
@@ -149,6 +169,36 @@ function AppInner() {
 
   const PageComponent = URL_TO_PAGE[activePage] || GenericPage;
 
+  // ── Subscription expired — lock everything except subscription page ───
+  if (subExpired && !user.is_super_admin) {
+    return (
+      <div className="app-layout">
+        <Sidebar
+          activePage="/subscriptions"
+          onChange={() => {}}
+          onLogout={() => { logout(); showToast('Logged out successfully'); }}
+          subDaysLeft={subDaysLeft}
+          subExpired={subExpired}
+        />
+        <main className="app-main">
+          <div style={{ padding: '60px 40px', maxWidth: 600, margin: '0 auto', textAlign: 'center' }}>
+            <div style={{ fontSize: 64, marginBottom: 16 }}>🔒</div>
+            <h2 style={{ color: '#dc2626', marginBottom: 12, fontSize: 24, fontWeight: 700 }}>
+              Subscription Expired
+            </h2>
+            <p style={{ color: '#666', marginBottom: 32, lineHeight: 1.6, fontSize: 15 }}>
+              Your subscription has expired. All features are locked.<br />
+              Please renew your subscription and wait for activation by the admin.
+            </p>
+            <Subscriptions />
+          </div>
+        </main>
+        <Toast />
+      </div>
+    );
+  }
+
+  // ── Normal app ────────────────────────────────────────────────────────
   return (
     <div className="app-layout">
       <OfflineBanner />
@@ -156,9 +206,14 @@ function AppInner() {
         activePage={activePage}
         onChange={handleMenuChange}
         onLogout={() => { logout(); showToast('Logged out successfully'); }}
+        subDaysLeft={subDaysLeft}
+        subExpired={subExpired}
       />
       <main className="app-main">
-        <PageComponent menuItem={activeMenu} onNavigate={(url) => handleMenuChange(url, null)} />
+        <PageComponent
+          menuItem={activeMenu}
+          onNavigate={(url) => handleMenuChange(url, null)}
+        />
       </main>
       <Toast />
     </div>

@@ -286,7 +286,7 @@ function MenuItem({ item, collapsed, activePage, onChange, depth = 0 }) {
   );
 }
 
-export default function Sidebar({ activePage, onChange, onLogout }) {
+export default function Sidebar({ activePage, onChange, onLogout, subDaysLeft, subExpired }) {
   const { user, menus } = useApp();
   const [collapsed, setCollapsed] = useState(false);
 
@@ -326,6 +326,26 @@ export default function Sidebar({ activePage, onChange, onLogout }) {
         }
       </nav>
 
+    {/* Subscription warning — above user name */}
+      {!collapsed && subExpired && (
+        <div style={{
+          margin:'0 8px 8px',background:'#fef2f2',border:'1px solid #dc2626',
+          borderRadius:8,padding:'8px 10px',fontSize:11,color:'#dc2626',fontWeight:600,lineHeight:1.4,
+        }}>
+          🔒 Subscription expired<br/>
+          <span style={{fontWeight:400,color:'#991b1b'}}>All features locked</span>
+        </div>
+      )}
+      {!collapsed && !subExpired && subDaysLeft !== null && subDaysLeft <= 3 && (
+        <div style={{
+          margin:'0 8px 8px',background:'#fef3c7',border:'1px solid #f59e0b',
+          borderRadius:8,padding:'8px 10px',fontSize:11,color:'#92400e',fontWeight:600,lineHeight:1.4,
+        }}>
+          ⚠️ Expires in {subDaysLeft} day{subDaysLeft!==1?'s':''}!<br/>
+          <span style={{fontWeight:400,color:'#b45309'}}>Renew to avoid lockout</span>
+        </div>
+      )}
+     
       <div className={`sidebar-user ${collapsed ? 'sidebar-user-collapsed' : ''}`}>
         <div className="user-avatar-sm">{initials}</div>
         {!collapsed && (
