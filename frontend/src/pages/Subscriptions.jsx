@@ -55,13 +55,24 @@ async function apiPatch(url, body) {
 // ══════════════════════════════════════════════════════════════════
 function SuperAdminSubscriptions({ allCompanies, user }) {
   const tree = buildTree(allCompanies || []);
-  const [subs,    setSubs]    = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [tab,     setTab]     = useState('all'); // all | pending | active | expired
-  const [modal,   setModal]   = useState(null);  // null | { sub }
-  const [payRef,  setPayRef]  = useState('');
-  const [saving,  setSaving]  = useState(false);
-  const [search,  setSearch]  = useState('');
+  const [subs,       setSubs]       = useState([]);
+  const [loading,    setLoading]    = useState(false);
+  const [tab,        setTab]        = useState('all');
+  const [modal,      setModal]      = useState(null);
+  const [payRef,     setPayRef]     = useState('');
+  const [saving,     setSaving]     = useState(false);
+  const [search,     setSearch]     = useState('');
+  const [showCreate, setShowCreate] = useState(false);
+
+  // ── Create form state ─────────────────────────────────────────────────────
+  const [selCompany,  setSelCompany]  = useState('');
+  const [selBranches, setSelBranches] = useState([]);
+  const [selPlan,     setSelPlan]     = useState('Basic');
+  const [selBilling,  setSelBilling]  = useState('monthly');
+  const [txnId,       setTxnId]       = useState('');
+  const [saNote,      setSaNote]      = useState('By Customer Request');
+  const [creating,    setCreating]    = useState(false);
+  const [createMsg,   setCreateMsg]   = useState(null);
 
   const companyName = id => (allCompanies||[]).find(c=>c.company_unique_id===id)?.name || `Company ${id}`;
 
@@ -74,39 +85,64 @@ function SuperAdminSubscriptions({ allCompanies, user }) {
 
   useEffect(() => { load(); }, [load]);
 
+  // Branches for selected company
+  const companyBranches = selCompany
+    ? (allCompanies||[]).filter(c =>
+        c.company_unique_id === parseInt(selCompany) ||
+        c.parant_company_unique_id === parseInt(selCompany))
+    : [];
+
+  const toggleBranch = id => setSelBranches(p => p.includes(id) ? p.filter(x=>x!==id) : [...p, id]);
+  const planTiers   = PLANS[selPlan] || [];
+  const matchedTier = planTiers.find(t => t.branches === selBranches.length);
+  const saPrice     = matchedTier ? (selBilling==='monthly' ? matchedTier.monthly : matchedTier.yearly) : null;
+
+  const createForCompany = async () => {
+    if (!selCompany)            { alert('Select a company'); return; }
+    if (!selBranches.length)    { alert('Select at least one branch'); return; }
+    if (!matchedTier)           { alert(`${selPlan} plan supports ${planTiers.map(t=>t.branches).join(', ')} branches. Selected: ${selBranches.length}`); return; }
+    setCreating(true);
+    try {
+      const result = await apiPost('/subscriptions/create', {
+        parent_company_id: parseInt(selCompany),
+        plan_name: selPlan, billing_cycle: selBilling,
+        branch_ids: selBranches, payment_ref: txnId || null,
+        created_by: user?.user_id, notes: saNote || 'By Customer Request',
+      });
+      await apiPatch(`/subscriptions/activate/${result.id}`, {
+        subscription_id: result.id, activated_by: user?.user_id, payment_ref: txnId || null,
+      });
+      setCreateMsg(`✓ Subscription activated! ₹${result.amount?.toLocaleString('en-IN')} · Valid till ${result.end_date}`);
+      setSelCompany(''); setSelBranches([]); setTxnId(''); setSaNote('By Customer Request');
+      load();
+    } catch(e) { alert('Failed: ' + e.message); }
+    setCreating(false);
+  };
+
   const filtered = subs.filter(s => {
     const matchTab = tab === 'all' || s.status === tab;
     const matchSearch = !search ||
       companyName(s.parent_company_id).toLowerCase().includes(search.toLowerCase()) ||
-      (s.plan_name||''). toLowerCase().includes(search.toLowerCase());
+      (s.plan_name||'').toLowerCase().includes(search.toLowerCase());
     return matchTab && matchSearch;
   });
 
   const activate = async (sub) => {
-    if (!payRef && !sub.payment_ref) {
-      alert('Please enter payment reference before activating');
-      return;
-    }
+    if (!payRef && !sub.payment_ref) { alert('Please enter payment reference before activating'); return; }
     setSaving(true);
     await apiPatch(`/subscriptions/activate/${sub.id}`, {
-      subscription_id: sub.id,
-      activated_by: user?.user_id,
-      payment_ref: payRef || sub.payment_ref,
+      subscription_id: sub.id, activated_by: user?.user_id, payment_ref: payRef || sub.payment_ref,
     });
-    setSaving(false);
-    setModal(null);
-    setPayRef('');
-    load();
+    setSaving(false); setModal(null); setPayRef(''); load();
   };
 
   const cancel = async (id) => {
     if (!confirm('Cancel this subscription?')) return;
-    await apiPatch(`/subscriptions/cancel/${id}`);
-    load();
+    await apiPatch(`/subscriptions/cancel/${id}`); load();
   };
 
   const counts = {
-    all:     subs.length,
+    all: subs.length,
     pending: subs.filter(s=>s.status==='pending').length,
     active:  subs.filter(s=>s.status==='active').length,
     expired: subs.filter(s=>s.status==='expired'||s.status==='cancelled').length,
@@ -114,20 +150,173 @@ function SuperAdminSubscriptions({ allCompanies, user }) {
 
   return (
     <div>
-      {/* Stats */}
-      <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:16,marginBottom:24}}>
-        {[
-          {label:'Total',    value:counts.all,     color:'#1a3a1c'},
-          {label:'Pending',  value:counts.pending, color:'#d97706'},
-          {label:'Active',   value:counts.active,  color:'#16a34a'},
-          {label:'Expired',  value:counts.expired, color:'#888'},
-        ].map(({label,value,color})=>(
-          <div key={label} style={{background:'#fff',border:'1px solid #e5e7eb',borderRadius:12,padding:'16px 20px'}}>
-            <div style={{fontSize:12,color:'#888',marginBottom:6}}>{label}</div>
-            <div style={{fontSize:28,fontWeight:700,color}}>{value}</div>
-          </div>
-        ))}
+      {/* Stats + New button */}
+      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:20}}>
+        <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:12,flex:1,marginRight:16}}>
+          {[
+            {label:'Total',   value:counts.all,     color:'#1a3a1c'},
+            {label:'Pending', value:counts.pending, color:'#d97706'},
+            {label:'Active',  value:counts.active,  color:'#16a34a'},
+            {label:'Expired', value:counts.expired, color:'#888'},
+          ].map(({label,value,color})=>(
+            <div key={label} style={{background:'#fff',border:'1px solid #e5e7eb',borderRadius:12,padding:'14px 18px'}}>
+              <div style={{fontSize:11,color:'#888',marginBottom:4}}>{label}</div>
+              <div style={{fontSize:26,fontWeight:700,color}}>{value}</div>
+            </div>
+          ))}
+        </div>
+        <button onClick={()=>{setShowCreate(!showCreate);setCreateMsg(null);}}
+          style={{background:'#1a3a1c',color:'#fff',border:'none',padding:'10px 20px',
+            borderRadius:10,fontSize:14,fontWeight:600,cursor:'pointer',whiteSpace:'nowrap',
+            boxShadow:'0 2px 8px rgba(26,58,28,0.2)'}}>
+          {showCreate ? '✕ Close' : '+ New Subscription'}
+        </button>
       </div>
+
+      {/* ── Create Subscription Form (SuperAdmin) ── */}
+      {showCreate && (
+        <div style={{background:'#fff',border:'2px solid #1a3a1c',borderRadius:16,padding:28,marginBottom:24,position:'relative'}}>
+          <div style={{position:'absolute',top:-12,left:20,background:'#1a3a1c',color:'#fff',
+            padding:'3px 14px',borderRadius:100,fontSize:12,fontWeight:700}}>New Subscription</div>
+
+          {createMsg && (
+            <div style={{background:'#d1fae5',border:'1px solid #6ee7b7',borderRadius:10,
+              padding:'12px 16px',marginBottom:20,fontSize:14,fontWeight:600,color:'#065f46'}}>
+              {createMsg}
+            </div>
+          )}
+
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:20}}>
+            {/* Left — Company + Branches */}
+            <div>
+              <div style={{fontSize:13,fontWeight:600,color:'#555',marginBottom:8}}>Select Company *</div>
+              <select value={selCompany} onChange={e=>{setSelCompany(e.target.value);setSelBranches([]);}}
+                style={{width:'100%',padding:'9px 12px',border:'1px solid #ddd',borderRadius:8,
+                  fontSize:14,marginBottom:16,background:'#fafafa'}}>
+                <option value=''>— Choose company —</option>
+                {tree.map(parent=>(
+                  <optgroup key={parent.company_unique_id} label={parent.name}>
+                    <option value={parent.company_unique_id}>{parent.name}</option>
+                    {parent.children?.map(child=>(
+                      <option key={child.company_unique_id} value={child.company_unique_id}>
+                        ↳ {child.name}
+                      </option>
+                    ))}
+                  </optgroup>
+                ))}
+              </select>
+
+              {selCompany && (
+                <>
+                  <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
+                    <div style={{fontSize:13,fontWeight:600,color:'#555'}}>Select Branches *</div>
+                    <div style={{display:'flex',gap:8}}>
+                      <button onClick={()=>setSelBranches(companyBranches.map(c=>c.company_unique_id))}
+                        style={{fontSize:12,color:'#1a3a1c',background:'none',border:'none',cursor:'pointer',textDecoration:'underline'}}>
+                        Select All
+                      </button>
+                      <button onClick={()=>setSelBranches([])}
+                        style={{fontSize:12,color:'#888',background:'none',border:'none',cursor:'pointer',textDecoration:'underline'}}>
+                        Clear
+                      </button>
+                    </div>
+                  </div>
+                  <div style={{display:'flex',flexDirection:'column',gap:6,maxHeight:160,overflowY:'auto'}}>
+                    {companyBranches.map(c => {
+                      const isSel = selBranches.includes(c.company_unique_id);
+                      return (
+                        <div key={c.company_unique_id} onClick={()=>toggleBranch(c.company_unique_id)}
+                          style={{display:'flex',alignItems:'center',gap:10,padding:'9px 12px',
+                            border:`1.5px solid ${isSel?'#1a3a1c':'#e5e7eb'}`,borderRadius:8,cursor:'pointer',
+                            background:isSel?'#e8f5e0':'#fafafa',transition:'all .15s'}}>
+                          <div style={{width:18,height:18,borderRadius:4,flexShrink:0,
+                            border:`2px solid ${isSel?'#1a3a1c':'#ccc'}`,
+                            background:isSel?'#1a3a1c':'#fff',
+                            display:'flex',alignItems:'center',justifyContent:'center'}}>
+                            {isSel && <span style={{color:'#fff',fontSize:11,fontWeight:700}}>✓</span>}
+                          </div>
+                          <div style={{fontSize:13,fontWeight:500,color:'#1a1a1a'}}>{c.name}</div>
+                          {c.company_unique_id===parseInt(selCompany) &&
+                            <span style={{fontSize:10,color:'#888',marginLeft:'auto'}}>Parent</span>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {selBranches.length > 0 && !matchedTier && (
+                    <div style={{marginTop:8,fontSize:12,color:'#dc2626',background:'#fef2f2',
+                      padding:'6px 10px',borderRadius:6}}>
+                      ⚠ {selPlan} plan supports {planTiers.map(t=>t.branches).join(', ')} branches. Selected: {selBranches.length}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+
+            {/* Right — Plan + TxnId + Notes */}
+            <div>
+              <div style={{fontSize:13,fontWeight:600,color:'#555',marginBottom:8}}>Plan</div>
+              <div style={{display:'flex',gap:8,marginBottom:16}}>
+                {['Basic','Pro'].map(p=>(
+                  <button key={p} onClick={()=>setSelPlan(p)} style={{
+                    flex:1,padding:'9px',borderRadius:8,cursor:'pointer',fontWeight:600,fontSize:14,
+                    border:`2px solid ${selPlan===p?'#1a3a1c':'#e5e7eb'}`,
+                    background:selPlan===p?'#1a3a1c':'#fff',
+                    color:selPlan===p?'#fff':'#333',
+                  }}>{p}</button>
+                ))}
+              </div>
+
+              <div style={{fontSize:13,fontWeight:600,color:'#555',marginBottom:8}}>Billing Cycle</div>
+              <div style={{display:'flex',gap:8,marginBottom:16}}>
+                {[['monthly','Monthly'],['yearly','Yearly (save 1 month)']].map(([v,l])=>(
+                  <button key={v} onClick={()=>setSelBilling(v)} style={{
+                    flex:1,padding:'8px',borderRadius:8,cursor:'pointer',fontSize:13,
+                    border:`1.5px solid ${selBilling===v?'#1a3a1c':'#e5e7eb'}`,
+                    background:selBilling===v?'#e8f5e0':'#fff',
+                    fontWeight:selBilling===v?600:400,color:'#333',
+                  }}>{l}</button>
+                ))}
+              </div>
+
+              {/* Price preview */}
+              {matchedTier && selCompany && (
+                <div style={{background:'linear-gradient(135deg,#e8f5e0,#f0fdf4)',border:'1px solid #b8ddb8',
+                  borderRadius:10,padding:'12px 16px',marginBottom:14}}>
+                  <div style={{fontSize:11,color:'#555',marginBottom:2}}>Amount to Activate</div>
+                  <div style={{fontSize:24,fontWeight:800,color:'#1a3a1c'}}>
+                    ₹{saPrice?.toLocaleString('en-IN')}
+                    <span style={{fontSize:12,fontWeight:400,color:'#555',marginLeft:6}}>
+                      /{selBilling==='monthly'?'month':'year'}
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              <div style={{fontSize:13,fontWeight:600,color:'#555',marginBottom:6}}>Transaction / UPI ID</div>
+              <input value={txnId} onChange={e=>setTxnId(e.target.value)}
+                placeholder="Enter UPI transaction reference..."
+                style={{width:'100%',padding:'9px 12px',border:'1px solid #ddd',
+                  borderRadius:8,fontSize:13,marginBottom:14}} />
+
+              <div style={{fontSize:13,fontWeight:600,color:'#555',marginBottom:6}}>Notes</div>
+              <input value={saNote} onChange={e=>setSaNote(e.target.value)}
+                placeholder="By Customer Request"
+                style={{width:'100%',padding:'9px 12px',border:'1px solid #ddd',
+                  borderRadius:8,fontSize:13,marginBottom:20}} />
+
+              <button
+                disabled={creating || !selCompany || !selBranches.length || !matchedTier}
+                onClick={createForCompany}
+                style={{width:'100%',padding:12,
+                  background:(creating||!selCompany||!selBranches.length||!matchedTier)?'#ccc':'#1a3a1c',
+                  color:'#fff',border:'none',borderRadius:10,fontSize:15,fontWeight:700,cursor:'pointer',
+                  boxShadow:'0 2px 8px rgba(26,58,28,0.2)'}}>
+                {creating ? '⏳ Creating...' : '⚡ Create & Activate Subscription'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Filters */}
       <div style={{display:'flex',gap:12,marginBottom:20,alignItems:'center',flexWrap:'wrap'}}>
@@ -141,7 +330,7 @@ function SuperAdminSubscriptions({ allCompanies, user }) {
           ))}
         </div>
         <input placeholder="Search company or plan..." value={search} onChange={e=>setSearch(e.target.value)}
-          style={{padding:'8px 14px',border:'1px solid #ddd',borderRadius:8,fontSize:14,width:240}} />
+          style={{padding:'8px 14px',border:'1px solid #ddd',borderRadius:8,fontSize:14,width:220}} />
         <button className="btn btn-sm btn-outline" onClick={load} style={{marginLeft:'auto'}}>↺ Refresh</button>
       </div>
 
@@ -151,8 +340,8 @@ function SuperAdminSubscriptions({ allCompanies, user }) {
           <table style={{width:'100%',borderCollapse:'collapse'}}>
             <thead>
               <tr style={{background:'#f9fafb',borderBottom:'1px solid #e5e7eb'}}>
-                {['Company','Plan','Branches','Billing','Amount','Start','End','Status','Payment Ref','Actions'].map(h=>(
-                  <th key={h} style={{padding:'10px 16px',fontSize:12,fontWeight:600,color:'#555',textAlign:'left'}}>{h}</th>
+                {['Company','Plan','Branches','Billing','Amount','Valid Till','Status','Txn Ref','Notes','Actions'].map(h=>(
+                  <th key={h} style={{padding:'10px 14px',fontSize:12,fontWeight:600,color:'#555',textAlign:'left'}}>{h}</th>
                 ))}
               </tr>
             </thead>
@@ -165,33 +354,42 @@ function SuperAdminSubscriptions({ allCompanies, user }) {
                 const expiring = s.status==='active' && daysLeft <= 3 && daysLeft >= 0;
                 return (
                   <tr key={s.id} style={{borderBottom:'1px solid #f0f0f0',background:expiring?'#fffbeb':undefined}}>
-                    <td style={{padding:'10px 16px',fontSize:13,fontWeight:500}}>{companyName(s.parent_company_id)}</td>
-                    <td style={{padding:'10px 16px',fontSize:13}}><Badge variant={s.plan_name==='Pro'?'info':'success'}>{s.plan_name}</Badge></td>
-                    <td style={{padding:'10px 16px',fontSize:13}}>{s.branch_count}</td>
-                    <td style={{padding:'10px 16px',fontSize:13,textTransform:'capitalize'}}>{s.billing_cycle}</td>
-                    <td style={{padding:'10px 16px',fontSize:13,fontWeight:600}}>₹{s.amount_paid?.toLocaleString('en-IN')}</td>
-                    <td style={{padding:'10px 16px',fontSize:12,color:'#666'}}>{s.start_date?.slice(0,10)}</td>
-                    <td style={{padding:'10px 16px',fontSize:12,color:expiring?'#d97706':'#666',fontWeight:expiring?600:400}}>
-                      {s.end_date?.slice(0,10)}
-                      {expiring && <span style={{marginLeft:6,fontSize:10,background:'#fef3c7',color:'#92400e',padding:'2px 7px',borderRadius:100}}>⚠ {daysLeft}d left</span>}
+                    <td style={{padding:'10px 14px',fontSize:13,fontWeight:500}}>{companyName(s.parent_company_id)}</td>
+                    <td style={{padding:'10px 14px',fontSize:13}}>
+                      <Badge variant={s.plan_name==='Pro'?'info':'success'}>{s.plan_name}</Badge>
                     </td>
-                    <td style={{padding:'10px 16px'}}>
+                    <td style={{padding:'10px 14px',fontSize:13}}>{s.branch_count}</td>
+                    <td style={{padding:'10px 14px',fontSize:13,textTransform:'capitalize'}}>{s.billing_cycle}</td>
+                    <td style={{padding:'10px 14px',fontSize:13,fontWeight:600}}>₹{s.amount_paid?.toLocaleString('en-IN')}</td>
+                    <td style={{padding:'10px 14px',fontSize:12,color:expiring?'#d97706':'#666',fontWeight:expiring?600:400}}>
+                      {s.end_date?.slice(0,10)}
+                      {expiring && <span style={{marginLeft:5,fontSize:10,background:'#fef3c7',
+                        color:'#92400e',padding:'2px 7px',borderRadius:100}}>⚠ {daysLeft}d</span>}
+                    </td>
+                    <td style={{padding:'10px 14px'}}>
                       <Badge variant={s.status==='active'?'success':s.status==='pending'?'warning':'error'}>
                         {s.status}
                       </Badge>
                     </td>
-                    <td style={{padding:'10px 16px',fontSize:11,color:'#888',fontFamily:'monospace'}}>{s.payment_ref||'—'}</td>
-                    <td style={{padding:'10px 16px'}}>
+                    <td style={{padding:'10px 14px',fontSize:11,color:'#888',fontFamily:'monospace',maxWidth:120,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+                      {s.payment_ref||'—'}
+                    </td>
+                    <td style={{padding:'10px 14px',fontSize:11,color:'#888',maxWidth:100,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+                      {s.notes||'—'}
+                    </td>
+                    <td style={{padding:'10px 14px'}}>
                       <div style={{display:'flex',gap:6}}>
                         {s.status==='pending' && (
                           <button onClick={()=>{setModal(s);setPayRef(s.payment_ref||'');}}
-                            style={{background:'#16a34a',color:'#fff',border:'none',padding:'5px 12px',borderRadius:6,fontSize:12,cursor:'pointer',fontWeight:600}}>
+                            style={{background:'#16a34a',color:'#fff',border:'none',padding:'5px 12px',
+                              borderRadius:6,fontSize:12,cursor:'pointer',fontWeight:600}}>
                             ✓ Activate
                           </button>
                         )}
                         {s.status==='active' && (
                           <button onClick={()=>cancel(s.id)}
-                            style={{background:'#fff',color:'#dc2626',border:'1px solid #dc2626',padding:'5px 12px',borderRadius:6,fontSize:12,cursor:'pointer'}}>
+                            style={{background:'#fff',color:'#dc2626',border:'1px solid #dc2626',
+                              padding:'5px 12px',borderRadius:6,fontSize:12,cursor:'pointer'}}>
                             Cancel
                           </button>
                         )}
@@ -214,28 +412,32 @@ function SuperAdminSubscriptions({ allCompanies, user }) {
               <div style={{fontSize:15,fontWeight:600}}>{companyName(modal.parent_company_id)}</div>
             </div>
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:10,marginBottom:14}}>
-              {[
-                ['Plan', modal.plan_name],
-                ['Branches', modal.branch_count],
-                ['Amount', `₹${modal.amount_paid?.toLocaleString('en-IN')}`],
-              ].map(([k,v])=>(
+              {[['Plan',modal.plan_name],['Branches',modal.branch_count],
+                ['Amount',`₹${modal.amount_paid?.toLocaleString('en-IN')}`]].map(([k,v])=>(
                 <div key={k} style={{background:'#f9fafb',borderRadius:8,padding:10,textAlign:'center'}}>
                   <div style={{fontSize:11,color:'#888',marginBottom:3}}>{k}</div>
                   <div style={{fontSize:14,fontWeight:600}}>{v}</div>
                 </div>
               ))}
             </div>
+            {modal.notes && (
+              <div style={{background:'#f0fdf4',border:'1px solid #bbf7d0',borderRadius:8,
+                padding:'8px 12px',marginBottom:12,fontSize:13,color:'#166534'}}>
+                📝 Notes: {modal.notes}
+              </div>
+            )}
             <label style={{fontSize:12,fontWeight:600,color:'#555',display:'block',marginBottom:6}}>
               UPI / Payment Reference *
             </label>
             <input value={payRef} onChange={e=>setPayRef(e.target.value)}
-              placeholder="Enter Twilio/UPI transaction reference..."
+              placeholder="Enter UPI transaction reference..."
               style={{width:'100%',padding:'10px 12px',border:'1px solid #ddd',borderRadius:8,fontSize:14}} />
           </div>
           <div style={{display:'flex',gap:10,justifyContent:'flex-end'}}>
             <button className="btn btn-ghost" onClick={()=>{setModal(null);setPayRef('');}}>Cancel</button>
             <button disabled={saving} onClick={()=>activate(modal)}
-              style={{background:'#16a34a',color:'#fff',border:'none',padding:'10px 24px',borderRadius:8,fontWeight:600,fontSize:14,cursor:'pointer'}}>
+              style={{background:'#16a34a',color:'#fff',border:'none',padding:'10px 24px',
+                borderRadius:8,fontWeight:600,fontSize:14,cursor:'pointer'}}>
               {saving?'Activating…':'✓ Activate Subscription'}
             </button>
           </div>
@@ -248,6 +450,7 @@ function SuperAdminSubscriptions({ allCompanies, user }) {
 // ══════════════════════════════════════════════════════════════════
 // ADMIN PAGE — subscribe for own company + branches
 // ══════════════════════════════════════════════════════════════════
+
 function AdminSubscriptions({ allCompanies, user, showToast }) {
   const userCid = user?.company_unique_id;
 

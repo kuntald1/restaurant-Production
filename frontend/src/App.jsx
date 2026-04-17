@@ -180,16 +180,17 @@ function AppInner() {
           subDaysLeft={subDaysLeft}
           subExpired={subExpired}
         />
-        <main className="app-main">
-          <div style={{ padding: '60px 40px', maxWidth: 600, margin: '0 auto', textAlign: 'center' }}>
-            <div style={{ fontSize: 64, marginBottom: 16 }}>🔒</div>
-            <h2 style={{ color: '#dc2626', marginBottom: 12, fontSize: 24, fontWeight: 700 }}>
-              Subscription Expired
-            </h2>
-            <p style={{ color: '#666', marginBottom: 32, lineHeight: 1.6, fontSize: 15 }}>
-              Your subscription has expired. All features are locked.<br />
-              Please renew your subscription and wait for activation by the admin.
+        <main className="app-main" style={{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',minHeight:'100vh',background:'#f8fafb'}}>
+          <div style={{textAlign:'center',maxWidth:480,padding:'48px 40px',background:'#fff',borderRadius:20,boxShadow:'0 8px 40px rgba(0,0,0,0.08)',border:'1px solid #e5e7eb'}}>
+            <div style={{fontSize:56,marginBottom:16}}>🔒</div>
+            <h2 style={{color:'#dc2626',fontSize:22,fontWeight:700,marginBottom:10}}>Subscription Expired</h2>
+            <p style={{color:'#666',lineHeight:1.7,marginBottom:28,fontSize:14}}>
+              Your subscription has expired. All features are locked until renewed.<br/>
+              Submit a renewal request below — activation is done by the admin.
             </p>
+            <div style={{background:'#fef2f2',border:'1px solid #fecaca',borderRadius:10,padding:'10px 16px',marginBottom:28,fontSize:13,color:'#991b1b'}}>
+              Expired on: <strong>{new Date().toLocaleDateString('en-IN')}</strong>
+            </div>
             <Subscriptions />
           </div>
         </main>
