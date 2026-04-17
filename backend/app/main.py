@@ -14,6 +14,7 @@ from app.routers import pos_router
 from app.routers import crm_router
 from app.routers import whatsapp_log_router
 from app.routers import contact_lead_router
+from app.routers import subscription_router
 import os
 
 app = FastAPI(redirect_slashes=False)
@@ -52,3 +53,4 @@ app.include_router(payment_transaction_router.router)
 app.include_router(crm_router.router)
 app.include_router(whatsapp_log_router.router)
 app.include_router(contact_lead_router.router)
+app.include_router(subscription_router.router)

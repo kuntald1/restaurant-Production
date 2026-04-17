@@ -34,6 +34,7 @@ import MenuPublic from './pages/MenuPublic';
 import QRGenerator from './pages/QRGenerator';
 import WhatsAppLogs from './pages/WhatsAppLogs';
 import ContactLeads from './pages/ContactLeads';
+import Subscriptions from './pages/Subscriptions';
 
 const URL_TO_PAGE = {
   '/home':                        Dashboard,
@@ -76,6 +77,7 @@ const URL_TO_PAGE = {
   '/qr-generator':                QRGenerator,
   '/whatsapp-logs':               WhatsAppLogs,
   '/contact-leads':               ContactLeads,
+  '/subscriptions':               Subscriptions,
 };
 
 // ── Offline Banner ────────────────────────────────────────────
