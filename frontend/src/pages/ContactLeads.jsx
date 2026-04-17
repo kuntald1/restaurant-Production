@@ -1,11 +1,22 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useApp } from '../context/useApp';
-import { request } from '../services/api';
 import { Table, Badge, Spinner, PageHeader, Modal } from '../components/UI';
 
 const leadsAPI = {
-  getAll:  ()             => request('GET',   '/contactleads/getall'),
-  update:  (id, data)     => request('PATCH', `/contactleads/update/${id}`, data),
+  getAll: async () => {
+    const res = await fetch('/contactleads/getall');
+    if (!res.ok) throw new Error('Failed');
+    return res.json();
+  },
+  update: async (id, data) => {
+    const res = await fetch(`/contactleads/update/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) throw new Error('Failed');
+    return res.json();
+  },
 };
 
 export default function ContactLeads() {
