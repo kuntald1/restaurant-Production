@@ -237,21 +237,25 @@ def get_bills_by_company(
 ):
     """
     Get all bills for a company (and its branches) with optional date range.
-    Uses PostgreSQL ::date cast to handle timezone-aware timestamps correctly.
     """
     from sqlalchemy import text
 
     params: dict = {"company_id": company_id}
 
-    date_filter = ""
-    if from_date:
-        date_filter += " AND (b.created_at AT TIME ZONE 'UTC')::date >= :from_date"
-        params["from_date"] = from_date
-    if to_date:
-        date_filter += " AND (b.created_at AT TIME ZONE 'UTC')::date <= :to_date"
-        params["to_date"] = to_date
+    # Build date conditions separately to avoid f-string SQL injection issues
+    date_conditions = []
+    if from_date and from_date.strip():
+        date_conditions.append("b.created_at::date >= :from_date")
+        params["from_date"] = from_date.strip()
+    if to_date and to_date.strip():
+        date_conditions.append("b.created_at::date <= :to_date")
+        params["to_date"] = to_date.strip()
 
-    sql = text(f"""
+    date_where = ""
+    if date_conditions:
+        date_where = "AND " + " AND ".join(date_conditions)
+
+    sql_str = """
         WITH scope AS (
             SELECT company_unique_id, name
             FROM company
@@ -290,28 +294,28 @@ def get_bills_by_company(
         JOIN scope s ON s.company_unique_id = b.company_unique_id
         LEFT JOIN "order" o ON o.order_id = b.order_id
         WHERE b.company_unique_id IN (SELECT company_unique_id FROM scope)
-        {date_filter}
+        """ + date_where + """
         ORDER BY b.created_at DESC
-    """)
+    """
 
-    rows = db.execute(sql, params).fetchall()
+    rows = db.execute(text(sql_str), params).fetchall()
 
     result = []
     for r in rows:
         m = r._mapping
         result.append({
-            "bill_id":           m["bill_id"],
-            "bill_number":       m["bill_number"],
-            "order_id":          m["order_id"],
-            "company_unique_id": m["company_unique_id"],
-            "company_name":      m["company_name"] or "",
-            "order_number":      m["order_number"] or "",
-            "table_name":        m["table_name_resolved"] or "",
-            "customer_name":     m["customer_name_resolved"] or "",
-            "customer_phone":    m["customer_phone"] or "",
+            "bill_id":           int(m["bill_id"]),
+            "bill_number":       str(m["bill_number"] or ""),
+            "order_id":          int(m["order_id"]) if m["order_id"] else None,
+            "company_unique_id": int(m["company_unique_id"]),
+            "company_name":      str(m["company_name"] or ""),
+            "order_number":      str(m["order_number"] or ""),
+            "table_name":        str(m["table_name_resolved"] or ""),
+            "customer_name":     str(m["customer_name_resolved"] or ""),
+            "customer_phone":    str(m["customer_phone"] or ""),
             "order_type":        str(m["order_type"] or ""),
             "payment_method":    str(m["payment_method"] or "cash"),
-            "payment_reference": m["payment_reference"] or "",
+            "payment_reference": str(m["payment_reference"] or ""),
             "subtotal":          float(m["subtotal"]        or 0),
             "discount_amount":   float(m["discount_amount"] or 0),
             "service_charge":    float(m["service_charge"]  or 0),
@@ -319,11 +323,11 @@ def get_bills_by_company(
             "sgst_amount":       float(m["sgst_amount"]     or 0),
             "cgst_amount":       float(m["cgst_amount"]     or 0),
             "promo_amount":      float(m["promo_amount"]    or 0),
-            "promo_code":        m["promo_code"] or "",
+            "promo_code":        str(m["promo_code"] or ""),
             "total_payable":     float(m["total_payable"]   or 0),
             "amount_paid":       float(m["amount_paid"]     or 0),
-            "print_count":       m["print_count"] or 0,
-            "created_by":        m["created_by"],
+            "print_count":       int(m["print_count"] or 0),
+            "created_by":        int(m["created_by"]) if m["created_by"] else None,
             "created_at":        str(m["created_at"]) if m["created_at"] else "",
         })
 
