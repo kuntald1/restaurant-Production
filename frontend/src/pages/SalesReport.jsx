@@ -48,69 +48,59 @@ export default function SalesReport() {
     if (!allCompanies?.length) { setFetchNote('No companies loaded. Please log in again.'); return; }
     setLoading(true); setBills([]); setFetchNote('');
 
-    // Build a map of company_unique_id → company name for lookup
     const companyMap = {};
     (allCompanies||[]).forEach(c => { companyMap[c.company_unique_id] = c.name; });
 
-    const allBills = [];
-    const seenIds  = new Set(); // deduplicate by bill_id
-
-    // Strategy 1: try GET /pos/bill/company/{cid} for the primary company scope
-    const primaryCid = companyId === 'all'
-      ? (allCompanies[0]?.company_unique_id)
-      : parseInt(companyId);
-
     try {
-      const res = await posBillAPI.getAll(primaryCid);
-      if (Array.isArray(res) && res.length > 0) {
-        res.forEach(b => {
-          if (!seenIds.has(b.bill_id)) {
-            seenIds.add(b.bill_id);
-            allBills.push({ ...b, company_name: companyMap[b.company_unique_id] || b.company_unique_id });
+      // Determine which parent company IDs to fetch for
+      // For "all": fetch for each parent company (branches are included by the backend)
+      // For a specific company: fetch just that one
+      const parentIds = companyId === 'all'
+        ? [...new Set(
+            visibleCompanies
+              .filter(c => !c.parant_company_unique_id)  // parents only
+              .map(c => c.company_unique_id)
+          )]
+        : [parseInt(companyId)];
+
+      const allBills = [];
+      const seenIds  = new Set();
+
+      for (const cid of parentIds) {
+        try {
+          const params = new URLSearchParams();
+          if (fromDate) params.append('from_date', fromDate);
+          if (toDate)   params.append('to_date',   toDate);
+          const url = `/pos/bill/company/${cid}${params.toString() ? '?' + params.toString() : ''}`;
+          const res = await fetch(url).then(r => r.ok ? r.json() : []);
+          if (Array.isArray(res)) {
+            res.forEach(b => {
+              if (!seenIds.has(b.bill_id)) {
+                seenIds.add(b.bill_id);
+                allBills.push({
+                  ...b,
+                  company_name: b.company_name || companyMap[b.company_unique_id] || `Company ${b.company_unique_id}`,
+                });
+              }
+            });
           }
-        });
-        setBills(allBills);
-        setLoading(false);
-        return;
+        } catch {}
       }
-    } catch {}
 
-    // Strategy 2: scan bill IDs once (not per company) — batch 5 at a time, stop on 3 misses
-    let misses = 0;
-    for (let id = 1; id <= 500 && misses < 3; id += 5) {
-      const ids   = [id, id+1, id+2, id+3, id+4];
-      const batch = await Promise.allSettled(ids.map(i => posBillAPI.getById(i)));
-      let hit = false;
-      batch.forEach(r => {
-        if (r.status === 'fulfilled' && r.value?.bill_id) {
-          const b = r.value;
-          // Filter by scope
-          const inScope = companyId === 'all' || b.company_unique_id === parseInt(companyId) ||
-            (allCompanies||[]).find(c => c.company_unique_id === b.company_unique_id && c.parant_company_unique_id === parseInt(companyId));
-          if (inScope && !seenIds.has(b.bill_id)) {
-            seenIds.add(b.bill_id);
-            allBills.push({ ...b, company_name: companyMap[b.company_unique_id] || `Company ${b.company_unique_id}` });
-            hit = true; misses = 0;
-          }
-        }
-      });
-      if (!hit) misses++;
+      if (allBills.length === 0) {
+        setFetchNote('No bills found for the selected date range and company.');
+      }
+      setBills(allBills);
+    } catch (e) {
+      setFetchNote('Error loading bills. Please try again.');
     }
-
-    if (allBills.length === 0) {
-      setFetchNote('No bills found. Add GET /pos/bill/company/{id} endpoint to your backend for instant loading.');
-    }
-    setBills(allBills);
     setLoading(false);
-  }, [companyId, allCompanies]);
+  }, [companyId, allCompanies, fromDate, toDate]);
 
-  useEffect(() => { load(); }, [companyId]);
+  useEffect(() => { load(); }, [companyId, fromDate, toDate]);
 
-  // Date filter
-  const filtered = bills.filter(b => {
-    const d = (b.created_at||b.bill_date||'').slice(0,10);
-    return (!d || (d >= fromDate && d <= toDate));
-  });
+  // All date filtering is now done server-side in the load() function
+  const filtered = bills;
 
   const totalRevenue  = filtered.reduce((s,b)=>s+Number(b.total_payable||b.amount_paid||b.total_amount||0),0);
   const totalDiscount = filtered.reduce((s,b)=>s+Number(b.discount_amount||0),0);

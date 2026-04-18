@@ -228,6 +228,68 @@ def generate_bill(data: BillCreate, db: Session = Depends(get_db)):
     """
     return pos_service.generate_bill(db, data)
 
+@router.get("/bill/company/{company_id}")
+def get_bills_by_company(
+    company_id: int,
+    from_date: str = None,
+    to_date: str = None,
+    db: Session = Depends(get_db)
+):
+    """
+    Get all bills for a company (and its branches) with optional date range.
+    Used by Sales Report — returns bills newest first.
+    """
+    from app.models.pos_models import Bill, Order
+    from app.models.company_model import Company
+    from sqlalchemy import or_
+    import datetime
+
+    # Resolve all company IDs in scope: the company itself + all its child branches
+    child_ids = [
+        c.company_unique_id
+        for c in db.query(Company).filter(Company.parant_company_unique_id == company_id).all()
+    ]
+    scope_ids = [company_id] + child_ids
+
+    query = db.query(Bill).filter(Bill.company_unique_id.in_(scope_ids))
+
+    # Optional date filtering on created_at
+    if from_date:
+        try:
+            query = query.filter(Bill.created_at >= datetime.datetime.fromisoformat(from_date))
+        except Exception:
+            pass
+    if to_date:
+        try:
+            # Include the full to_date day
+            end = datetime.datetime.fromisoformat(to_date) + datetime.timedelta(days=1)
+            query = query.filter(Bill.created_at < end)
+        except Exception:
+            pass
+
+    bills = query.order_by(Bill.created_at.desc()).all()
+
+    # Fetch company names for response
+    company_map = {
+        c.company_unique_id: c.name
+        for c in db.query(Company).filter(Company.company_unique_id.in_(scope_ids)).all()
+    }
+
+    result = []
+    for bill in bills:
+        bill_dict = {c.name: getattr(bill, c.name) for c in bill.__table__.columns}
+        # Attach order details (order_number, table_name, order_type, items)
+        order = db.query(Order).filter(Order.order_id == bill.order_id).first()
+        if order:
+            bill_dict['order_number']  = order.order_number
+            bill_dict['table_name']    = order.table_name
+            bill_dict['order_type']    = order.order_type
+            bill_dict['customer_name'] = order.customer_name
+        bill_dict['company_name'] = company_map.get(bill.company_unique_id, f"Company {bill.company_unique_id}")
+        result.append(bill_dict)
+
+    return result
+
 @router.get("/bill/order/{order_id}", response_model=BillResponse)
 def get_bill_by_order(order_id: int, db: Session = Depends(get_db)):
     from app.models.pos_models import Bill
