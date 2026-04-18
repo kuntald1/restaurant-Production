@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     crypto_secret_key: str
 
     # ── Storage ──────────────────────────────────────────────────
-    BASE_URL: str = "https://restaurantbackend-production-8e87.up.railway.app"               #"http://localhost:8000"
+    BASE_URL: str = "https://currycloud.mooo.com"
     STORAGE_BACKEND: str = "local"
     LOCAL_UPLOAD_DIR: str = "static"
 

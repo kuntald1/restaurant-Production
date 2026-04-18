@@ -3,7 +3,7 @@ import { companyAPI } from '../services/api';
 import { Spinner, PageHeader } from '../components/UI';
 import { useApp } from '../context/useApp';
 
-const BASE = 'https://restaurantbackend-production-8e87.up.railway.app';
+const BASE = '';
 
 // Safely resolve image URL — handles both full URLs and relative paths
 function resolveImageUrl(value) {

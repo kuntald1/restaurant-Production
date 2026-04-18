@@ -1,7 +1,7 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
-const BACKEND = 'https://restaurantbackend-production-8e87.up.railway.app'
+const BACKEND = 'https://currycloud.mooo.com'
 
 const proxy = {
   target: BACKEND,

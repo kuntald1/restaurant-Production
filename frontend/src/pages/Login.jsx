@@ -42,13 +42,13 @@ export default function Login() {
       try {
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 4000);
-        await fetch('https://restaurantbackend-production-8e87.up.railway.app/health', { signal: controller.signal });
+        await fetch('/health', { signal: controller.signal });
         clearTimeout(timeout);
       } catch {
         // Backend sleeping — show warming message and wake it up
         setWarming(true);
         try {
-          await fetch('https://restaurantbackend-production-8e87.up.railway.app/company/');
+          await fetch('/company/');
         } catch {}
         setWarming(false);
       }
