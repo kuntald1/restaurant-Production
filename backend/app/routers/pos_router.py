@@ -237,23 +237,19 @@ def get_bills_by_company(
 ):
     """
     Get all bills for a company (and its branches) with optional date range.
-    Uses raw SQL with DATE() cast to handle timezone-aware timestamps correctly.
+    Uses PostgreSQL ::date cast to handle timezone-aware timestamps correctly.
     """
     from sqlalchemy import text
 
-    # Build the WHERE clause
-    conditions = ["b.company_unique_id = ANY(:scope_ids)"]
     params: dict = {"company_id": company_id}
 
-    # Resolve branch IDs via subquery inline
+    date_filter = ""
     if from_date:
-        conditions.append("DATE(b.created_at) >= :from_date")
+        date_filter += " AND (b.created_at AT TIME ZONE 'UTC')::date >= :from_date"
         params["from_date"] = from_date
     if to_date:
-        conditions.append("DATE(b.created_at) <= :to_date")
+        date_filter += " AND (b.created_at AT TIME ZONE 'UTC')::date <= :to_date"
         params["to_date"] = to_date
-
-    where = " AND ".join(conditions)
 
     sql = text(f"""
         WITH scope AS (
@@ -294,8 +290,7 @@ def get_bills_by_company(
         JOIN scope s ON s.company_unique_id = b.company_unique_id
         LEFT JOIN "order" o ON o.order_id = b.order_id
         WHERE b.company_unique_id IN (SELECT company_unique_id FROM scope)
-        {"AND DATE(b.created_at) >= :from_date" if from_date else ""}
-        {"AND DATE(b.created_at) <= :to_date"   if to_date   else ""}
+        {date_filter}
         ORDER BY b.created_at DESC
     """)
 
@@ -305,31 +300,31 @@ def get_bills_by_company(
     for r in rows:
         m = r._mapping
         result.append({
-            "bill_id":          m["bill_id"],
-            "bill_number":      m["bill_number"],
-            "order_id":         m["order_id"],
-            "company_unique_id":m["company_unique_id"],
-            "company_name":     m["company_name"] or "",
-            "order_number":     m["order_number"] or "",
-            "table_name":       m["table_name_resolved"] or "",
-            "customer_name":    m["customer_name_resolved"] or "",
-            "customer_phone":   m["customer_phone"] or "",
-            "order_type":       str(m["order_type"] or ""),
-            "payment_method":   str(m["payment_method"] or "cash"),
-            "payment_reference":m["payment_reference"] or "",
-            "subtotal":         float(m["subtotal"] or 0),
-            "discount_amount":  float(m["discount_amount"] or 0),
-            "service_charge":   float(m["service_charge"] or 0),
-            "tax_amount":       float(m["tax_amount"] or 0),
-            "sgst_amount":      float(m["sgst_amount"] or 0),
-            "cgst_amount":      float(m["cgst_amount"] or 0),
-            "promo_amount":     float(m["promo_amount"] or 0),
-            "promo_code":       m["promo_code"] or "",
-            "total_payable":    float(m["total_payable"] or 0),
-            "amount_paid":      float(m["amount_paid"] or 0),
-            "print_count":      m["print_count"] or 0,
-            "created_by":       m["created_by"],
-            "created_at":       str(m["created_at"]) if m["created_at"] else "",
+            "bill_id":           m["bill_id"],
+            "bill_number":       m["bill_number"],
+            "order_id":          m["order_id"],
+            "company_unique_id": m["company_unique_id"],
+            "company_name":      m["company_name"] or "",
+            "order_number":      m["order_number"] or "",
+            "table_name":        m["table_name_resolved"] or "",
+            "customer_name":     m["customer_name_resolved"] or "",
+            "customer_phone":    m["customer_phone"] or "",
+            "order_type":        str(m["order_type"] or ""),
+            "payment_method":    str(m["payment_method"] or "cash"),
+            "payment_reference": m["payment_reference"] or "",
+            "subtotal":          float(m["subtotal"]        or 0),
+            "discount_amount":   float(m["discount_amount"] or 0),
+            "service_charge":    float(m["service_charge"]  or 0),
+            "tax_amount":        float(m["tax_amount"]      or 0),
+            "sgst_amount":       float(m["sgst_amount"]     or 0),
+            "cgst_amount":       float(m["cgst_amount"]     or 0),
+            "promo_amount":      float(m["promo_amount"]    or 0),
+            "promo_code":        m["promo_code"] or "",
+            "total_payable":     float(m["total_payable"]   or 0),
+            "amount_paid":       float(m["amount_paid"]     or 0),
+            "print_count":       m["print_count"] or 0,
+            "created_by":        m["created_by"],
+            "created_at":        str(m["created_at"]) if m["created_at"] else "",
         })
 
     return result
