@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from pydantic import BaseModel
@@ -6,6 +6,7 @@ from typing import Optional, List
 from datetime import date, datetime, timedelta
 from app.database import get_db
 from app.models.company_model import Company
+from app.services.upload_service import upload_image, delete_image
 import json
 
 router = APIRouter(prefix="/subscriptions", tags=["Subscriptions"])
@@ -36,6 +37,7 @@ class SubscriptionCreate(BaseModel):
     billing_cycle     : str           # 'monthly' | 'yearly'
     branch_ids        : List[int]
     payment_ref       : Optional[str] = None
+    payment_type      : Optional[str] = "UPI"   # 'UPI' | 'Cash'
     notes             : Optional[str] = None
     created_by        : Optional[int] = None
 
@@ -43,6 +45,7 @@ class SubscriptionActivate(BaseModel):
     subscription_id  : int
     activated_by     : int
     payment_ref      : Optional[str] = None
+    payment_type     : Optional[str] = None     # 'UPI' | 'Cash'
 
 # ── Plans list ────────────────────────────────────────────────────────────────
 @router.get("/plans")
@@ -52,6 +55,43 @@ def get_plans(db: Session = Depends(get_db)):
         "FROM subscription_plans WHERE is_active = TRUE ORDER BY plan_name, max_branches"
     )).fetchall()
     return [dict(r._mapping) for r in rows]
+
+# ── QR Image — Upload (SuperAdmin sets the payment QR image) ─────────────────
+@router.post("/qr/upload")
+async def upload_qr(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db)
+):
+    """SuperAdmin uploads the payment QR image shown to admins on subscription page."""
+    # Delete old QR if exists
+    existing = db.execute(text(
+        "SELECT value FROM app_settings WHERE key = 'subscription_qr_url'"
+    )).fetchone()
+    if existing and existing.value:
+        try:
+            await delete_image(existing.value)
+        except Exception:
+            pass  # ignore delete errors
+
+    url = await upload_image(file, "subscription/qr")
+
+    # Upsert into app_settings table
+    db.execute(text("""
+        INSERT INTO app_settings (key, value)
+        VALUES ('subscription_qr_url', :url)
+        ON CONFLICT (key) DO UPDATE SET value = :url
+    """), {"url": url})
+    db.commit()
+    return {"url": url, "message": "QR image uploaded successfully"}
+
+# ── QR Image — Get (Admin fetches the current QR image URL) ──────────────────
+@router.get("/qr")
+def get_qr(db: Session = Depends(get_db)):
+    """Returns the current payment QR image URL for the subscription page."""
+    row = db.execute(text(
+        "SELECT value FROM app_settings WHERE key = 'subscription_qr_url'"
+    )).fetchone()
+    return {"url": row.value if row else None}
 
 # ── Get all subscriptions (SuperAdmin) ────────────────────────────────────────
 @router.get("/getall")
@@ -113,7 +153,6 @@ def create_subscription(data: SubscriptionCreate, db: Session = Depends(get_db))
     """), {"pname": data.plan_name, "bc": branch_count}).fetchone()
 
     if not plan:
-        # Find nearest valid plan
         valid = db.execute(text("""
             SELECT max_branches FROM subscription_plans
             WHERE plan_name = :pname AND is_active = TRUE
@@ -125,7 +164,6 @@ def create_subscription(data: SubscriptionCreate, db: Session = Depends(get_db))
             f"Available branch counts: {valid_counts}"
         )
 
-    # Calculate amount and dates
     amount = plan.price_monthly if data.billing_cycle == 'monthly' else plan.price_yearly
     start  = date.today()
     if data.billing_cycle == 'monthly':
@@ -134,14 +172,15 @@ def create_subscription(data: SubscriptionCreate, db: Session = Depends(get_db))
     else:
         end = date(start.year + 1, start.month, start.day)
 
-    # Check if any branch already has active subscription — get warnings but still allow
     result = db.execute(text("""
         INSERT INTO subscriptions
             (parent_company_id, plan_id, plan_name, billing_cycle, branch_ids,
-             branch_count, amount_paid, start_date, end_date, status, payment_ref, created_by, notes)
+             branch_count, amount_paid, start_date, end_date, status,
+             payment_ref, payment_type, created_by, notes)
         VALUES
             (:pcid, :pid, :pname, :bcycle, :bids,
-             :bc, :amount, :start, :end, 'pending', :pref, :created_by, :notes)
+             :bc, :amount, :start, :end, 'pending',
+             :pref, :ptype, :created_by, :notes)
         RETURNING id
     """), {
         "pcid": data.parent_company_id,
@@ -154,6 +193,7 @@ def create_subscription(data: SubscriptionCreate, db: Session = Depends(get_db))
         "start": start,
         "end": end,
         "pref": data.payment_ref,
+        "ptype": data.payment_type or "UPI",
         "created_by": data.created_by,
         "notes": data.notes,
     })
@@ -183,9 +223,15 @@ def activate(sub_id: int, data: SubscriptionActivate, db: Session = Depends(get_
     db.execute(text("""
         UPDATE subscriptions
         SET status = 'active', activated_by = :ab, activated_at = NOW(),
-            payment_ref = COALESCE(:pref, payment_ref)
+            payment_ref  = COALESCE(:pref, payment_ref),
+            payment_type = COALESCE(:ptype, payment_type)
         WHERE id = :id
-    """), {"ab": data.activated_by, "pref": data.payment_ref, "id": sub_id})
+    """), {
+        "ab":    data.activated_by,
+        "pref":  data.payment_ref,
+        "ptype": data.payment_type,
+        "id":    sub_id,
+    })
     db.commit()
     return {"message": "Subscription activated successfully"}
 
