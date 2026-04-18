@@ -271,7 +271,7 @@ def get_bills_by_company(
             "  b.print_count, b.created_by,"
             "  b.created_at::TEXT AS created_at,"
             "  COALESCE(o.order_number, '') AS order_number,"
-            "  COALESCE(b.table_name, o.table_name, '') AS table_name_resolved,"
+            "  COALESCE(b.table_name, '') AS table_name_resolved,"
             "  COALESCE(b.customer_name, o.customer_name, '') AS customer_name_resolved,"
             "  s.name AS company_name"
             " FROM bill b"
