@@ -422,7 +422,7 @@ export default function SalesReport() {
                     ) : (
                       <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
                         <thead><tr style={{background:'#f8f9fa'}}>
-                          {['Item','Qty','Rate','Total','Status'].map(h=>(
+                          {['Item','Qty','Rate','Total','Status','Note'].map(h=>(
                             <th key={h} style={{padding:'7px 10px',textAlign:h==='Qty'||h==='Rate'||h==='Total'?'right':'left',fontSize:11,fontWeight:700,color:'#888',textTransform:'uppercase',borderBottom:'1px solid #eee'}}>{h}</th>
                           ))}
                         </tr></thead>
@@ -434,6 +434,12 @@ export default function SalesReport() {
                               <td style={{padding:'7px 10px',textAlign:'right'}}>₹{Number(it.unit_price||0).toFixed(2)}</td>
                               <td style={{padding:'7px 10px',textAlign:'right',fontWeight:600}}>₹{Number(it.total_price||0).toFixed(2)}</td>
                               <td style={{padding:'7px 10px',fontSize:11}}><span style={{background:'#f3f4f6',color:'#555',padding:'2px 7px',borderRadius:8}}>{it.kot_item_status||'—'}</span></td>
+                              <td style={{padding:'7px 10px'}}>
+                                {it.notes
+                                  ? <span style={{fontSize:11,color:'#92400e',background:'#fef3c7',padding:'2px 8px',borderRadius:8,display:'inline-flex',alignItems:'center',gap:3}}><span>📝</span>{it.notes}</span>
+                                  : <span style={{color:'#ccc',fontSize:11}}>—</span>
+                                }
+                              </td>
                             </tr>
                           ))}
                         </tbody>

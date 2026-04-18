@@ -293,7 +293,7 @@ export default function OrdersReport() {
                           ) : (
                             <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
                               <thead><tr>
-                                {['Item','Rate','Qty','Total','Status'].map(h=>(
+                                {['Item','Rate','Qty','Total','Status','Note'].map(h=>(
                                   <th key={h} style={{padding:'6px 10px',textAlign:h==='Rate'||h==='Qty'||h==='Total'?'right':'left',fontSize:11,fontWeight:700,color:'var(--text-3)',textTransform:'uppercase',borderBottom:'1px solid var(--border)'}}>{h}</th>
                                 ))}
                               </tr></thead>
@@ -309,6 +309,12 @@ export default function OrdersReport() {
                                     <td style={{padding:'7px 10px',textAlign:'right',fontWeight:600}}>₹{Number(it.total_price||0).toFixed(2)}</td>
                                     <td style={{padding:'7px 10px'}}>
                                       <span style={{fontSize:11,background:'#f3f4f6',color:'#555',padding:'2px 7px',borderRadius:8}}>{it.kot_item_status||'—'}</span>
+                                    </td>
+                                    <td style={{padding:'7px 10px'}}>
+                                      {it.notes
+                                        ? <span style={{fontSize:11,color:'#92400e',background:'#fef3c7',padding:'2px 8px',borderRadius:8,display:'inline-flex',alignItems:'center',gap:3}}><span>📝</span>{it.notes}</span>
+                                        : <span style={{color:'var(--text-3)',fontSize:11}}>—</span>
+                                      }
                                     </td>
                                   </tr>
                                 ))}

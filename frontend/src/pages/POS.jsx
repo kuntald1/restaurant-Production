@@ -675,6 +675,35 @@ const loadMenu = useCallback(async () => {
     } catch (e) { showToast(e.message, 'error'); }
   };
 
+  // ── Item Note (kitchen instruction) ──────────────────────
+  const [noteEdit, setNoteEdit] = useState(null); // { order_item_id, current }
+  const [noteVal,  setNoteVal]  = useState('');
+
+  const openNoteEdit = (item) => {
+    setNoteEdit({ order_item_id: item.order_item_id, item_name: item.item_name });
+    setNoteVal(item.notes || '');
+  };
+
+  const saveItemNote = async () => {
+    if (!activeOrder || !noteEdit) return;
+    try {
+      await posOrderAPI.updateItemNotes(activeOrder.order_id, noteEdit.order_item_id, noteVal);
+      // Update local state immediately
+      setActiveOrder(prev => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          items: (prev.items || []).map(i =>
+            i.order_item_id === noteEdit.order_item_id
+              ? { ...i, notes: noteVal.trim() || null }
+              : i
+          ),
+        };
+      });
+      setNoteEdit(null);
+    } catch (e) { showToast('Failed to save note', 'error'); }
+  };
+
   // ── Change quantity ───────────────────────────────────────
   const changeQty = async (item, delta) => {
     if (!activeOrder) return;
@@ -1590,25 +1619,42 @@ ${company.hsn ? `<div class="center muted" style="margin-top:4px">HSN: ${company
                     : item.kot_item_status === 'kot_open' ? '#fef9c3'
                     : 'transparent';
                   return (
-                    <div key={item.order_item_id} style={{ display: 'flex', alignItems: 'center', padding: '9px 14px', borderBottom: '1px solid var(--border-light)', background: kotColor, gap: 6 }}>
-                      <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <span style={{ color: item.is_veg !== false ? 'var(--primary)' : '#dc2626', fontSize: 9 }}>●</span>
-                        <span style={{ fontSize: 13 }}>{item.item_name}</span>
-                        {item.notes && <span style={{ fontSize: 10, color: 'var(--text-3)' }}>({item.notes})</span>}
-                        {item.kot_item_status && item.kot_item_status !== 'draft' && (
-                          <span style={{ fontSize: 10, background: 'rgba(0,0,0,.07)', padding: '1px 5px', borderRadius: 8, color: 'var(--text-3)' }}>{item.kot_item_status}</span>
+                    <div key={item.order_item_id} style={{ borderBottom: '1px solid var(--border-light)', background: kotColor }}>
+                      <div style={{ display: 'flex', alignItems: 'center', padding: '9px 14px', gap: 6 }}>
+                        <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <span style={{ color: item.is_veg !== false ? 'var(--primary)' : '#dc2626', fontSize: 9 }}>●</span>
+                          <span style={{ fontSize: 13 }}>{item.item_name}</span>
+                          {item.kot_item_status && item.kot_item_status !== 'draft' && (
+                            <span style={{ fontSize: 10, background: 'rgba(0,0,0,.07)', padding: '1px 5px', borderRadius: 8, color: 'var(--text-3)' }}>{item.kot_item_status}</span>
+                          )}
+                        </div>
+                        {/* Note edit button — pencil icon */}
+                        {!isLocked && (
+                          <button
+                            title="Add kitchen note"
+                            onClick={() => openNoteEdit(item)}
+                            style={{ background: item.notes ? '#fef3c7' : 'none', border: item.notes ? '1px solid #fde68a' : '1px solid transparent', borderRadius: 6, padding: '2px 7px', fontSize: 12, cursor: 'pointer', color: item.notes ? '#92400e' : '#aaa', flexShrink: 0 }}>
+                            ✏️
+                          </button>
+                        )}
+                        <span style={{ width: 70, textAlign: 'right', color: 'var(--text-3)', fontSize: 12 }}>₹{parseFloat(item.unit_price).toFixed(0)}</span>
+                        <div style={{ width: 90, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                          {!isLocked && <button style={S.qtyBtn} onClick={() => changeQty(item, -1)}>−</button>}
+                          <span style={{ fontWeight: 700, minWidth: 18, textAlign: 'center', fontSize: 13 }}>{item.quantity}</span>
+                          {!isLocked && <button style={S.qtyBtn} onClick={() => changeQty(item, 1)}>+</button>}
+                        </div>
+                        <span style={{ width: 70, textAlign: 'right', fontWeight: 600, fontSize: 13 }}>₹{(parseFloat(item.unit_price) * item.quantity).toFixed(0)}</span>
+                        {!isLocked && (
+                          <button style={{ width: 28, background: 'none', border: 'none', color: '#dc2626', cursor: 'pointer', fontSize: 13 }}
+                            onClick={() => changeQty(item, -item.quantity)}>✕</button>
                         )}
                       </div>
-                      <span style={{ width: 70, textAlign: 'right', color: 'var(--text-3)', fontSize: 12 }}>₹{parseFloat(item.unit_price).toFixed(0)}</span>
-                      <div style={{ width: 90, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
-                        {!isLocked && <button style={S.qtyBtn} onClick={() => changeQty(item, -1)}>−</button>}
-                        <span style={{ fontWeight: 700, minWidth: 18, textAlign: 'center', fontSize: 13 }}>{item.quantity}</span>
-                        {!isLocked && <button style={S.qtyBtn} onClick={() => changeQty(item, 1)}>+</button>}
-                      </div>
-                      <span style={{ width: 70, textAlign: 'right', fontWeight: 600, fontSize: 13 }}>₹{(parseFloat(item.unit_price) * item.quantity).toFixed(0)}</span>
-                      {!isLocked && (
-                        <button style={{ width: 28, background: 'none', border: 'none', color: '#dc2626', cursor: 'pointer', fontSize: 13 }}
-                          onClick={() => changeQty(item, -item.quantity)}>✕</button>
+                      {/* Kitchen note display below item */}
+                      {item.notes && (
+                        <div style={{ paddingLeft: 30, paddingBottom: 6, paddingRight: 14, fontSize: 11, color: '#92400e', fontStyle: 'italic', display: 'flex', alignItems: 'center', gap: 4 }}>
+                          <span>📝</span>
+                          <span>{item.notes}</span>
+                        </div>
                       )}
                     </div>
                   );
@@ -2497,6 +2543,43 @@ ${company.hsn ? `<div class="center muted" style="margin-top:4px">HSN: ${company
           </div>
         </div>
       )}
+
+      {/* ── ITEM NOTE MODAL ── */}
+      {noteEdit && (
+        <div style={S.overlay} onClick={() => setNoteEdit(null)}>
+          <div style={{ ...S.modalBox, maxWidth: 380 }} onClick={e => e.stopPropagation()}>
+            <div style={S.modalHead}>
+              <span style={{ fontWeight: 700, fontSize: 16 }}>📝 Kitchen Note</span>
+              <button style={S.closeBtn} onClick={() => setNoteEdit(null)}>✕</button>
+            </div>
+            <div style={{ marginBottom: 10, fontSize: 13, color: 'var(--text-2)' }}>
+              Item: <strong>{noteEdit.item_name}</strong>
+            </div>
+            <div style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 8 }}>
+              Add special instructions for the kitchen (e.g. "less chilli", "no onion", "extra sauce")
+            </div>
+            <textarea
+              autoFocus
+              value={noteVal}
+              onChange={e => setNoteVal(e.target.value)}
+              placeholder="e.g. Less chilli, no onion, extra butter..."
+              rows={3}
+              style={{ width: '100%', padding: '10px 12px', border: '1.5px solid var(--border)', borderRadius: 8, fontSize: 13, resize: 'vertical', fontFamily: 'inherit', outline: 'none' }}
+              onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); saveItemNote(); } if (e.key === 'Escape') setNoteEdit(null); }}
+            />
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 14 }}>
+              {noteVal && (
+                <button style={{ padding: '8px 14px', background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca', borderRadius: 8, cursor: 'pointer', fontSize: 13 }}
+                  onClick={() => setNoteVal('')}>Clear</button>
+              )}
+              <button style={S.cancelBtn} onClick={() => setNoteEdit(null)}>Cancel</button>
+              <button style={{ ...S.primaryBtn, background: 'linear-gradient(135deg,var(--green-700),var(--green-500))', border: 'none' }}
+                onClick={saveItemNote}>Save Note</button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

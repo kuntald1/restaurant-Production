@@ -137,6 +137,21 @@ def update_quantity(order_id: int, order_item_id: int, quantity: int, db: Sessio
     """
     return pos_service.update_item_quantity(db, order_id, order_item_id, quantity)
 
+@router.patch("/orders/{order_id}/items/{order_item_id}/notes")
+def update_item_notes(order_id: int, order_item_id: int, notes: str = "", db: Session = Depends(get_db)):
+    """Update the kitchen note for a specific order item (e.g. 'less chilli', 'no onion')."""
+    from app.models.pos_models import OrderItem
+    item = db.query(OrderItem).filter(
+        OrderItem.order_item_id == order_item_id,
+        OrderItem.order_id == order_id,
+    ).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Item not found")
+    item.notes = notes.strip() if notes else None
+    db.commit()
+    db.refresh(item)
+    return {"order_item_id": order_item_id, "notes": item.notes, "message": "Notes updated"}
+
 @router.delete("/orders/{order_id}/items/{order_item_id}")
 def cancel_item(order_id: int, order_item_id: int, reason: str = "Removed by staff", db: Session = Depends(get_db)):
     """Remove item from order. Blocked if item is being cooked."""

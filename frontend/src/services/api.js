@@ -163,6 +163,7 @@ export const posOrderAPI = {
   // Items
   addItem:       (orderId, companyId, data) => request('POST', `/pos/orders/${orderId}/items?company_id=${companyId}`, data),
   updateQty:     (orderId, itemId, qty)     => request('PATCH', `/pos/orders/${orderId}/items/${itemId}/quantity?quantity=${qty}`),
+  updateItemNotes:(orderId, itemId, notes)  => request('PATCH', `/pos/orders/${orderId}/items/${itemId}/notes?notes=${encodeURIComponent(notes||'')}`),
   cancelItem:    (orderId, itemId, reason)  => request('DELETE', `/pos/orders/${orderId}/items/${itemId}?reason=${encodeURIComponent(reason)}`),
 };
 
