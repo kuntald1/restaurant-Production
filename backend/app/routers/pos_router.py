@@ -235,103 +235,91 @@ def get_bills_by_company(
     to_date: str = None,
     db: Session = Depends(get_db)
 ):
-    """
-    Get all bills for a company (and its branches) with optional date range.
-    """
     from sqlalchemy import text
+    import traceback
 
-    params: dict = {"company_id": company_id}
+    try:
+        params: dict = {"company_id": company_id}
 
-    # Build date conditions separately to avoid f-string SQL injection issues
-    date_conditions = []
-    if from_date and from_date.strip():
-        date_conditions.append("b.created_at::date >= :from_date")
-        params["from_date"] = from_date.strip()
-    if to_date and to_date.strip():
-        date_conditions.append("b.created_at::date <= :to_date")
-        params["to_date"] = to_date.strip()
+        date_conditions = []
+        if from_date and from_date.strip():
+            date_conditions.append("b.created_at::date >= :from_date")
+            params["from_date"] = from_date.strip()
+        if to_date and to_date.strip():
+            date_conditions.append("b.created_at::date <= :to_date")
+            params["to_date"] = to_date.strip()
 
-    date_where = ""
-    if date_conditions:
-        date_where = "AND " + " AND ".join(date_conditions)
+        date_where = ""
+        if date_conditions:
+            date_where = "AND " + " AND ".join(date_conditions)
 
-    sql_str = """
-        WITH scope AS (
-            SELECT company_unique_id, name
-            FROM company
-            WHERE company_unique_id = :company_id
-               OR parant_company_unique_id = :company_id
+        sql_str = (
+            "WITH scope AS ("
+            "  SELECT company_unique_id, name FROM company"
+            "  WHERE company_unique_id = :company_id"
+            "     OR parant_company_unique_id = :company_id"
+            ") "
+            "SELECT"
+            "  b.bill_id, b.bill_number, b.order_id, b.company_unique_id,"
+            "  b.subtotal, b.discount_amount, b.service_charge, b.tax_amount,"
+            "  b.sgst_amount, b.cgst_amount, b.promo_amount, b.promo_code,"
+            "  b.total_payable, b.amount_paid,"
+            "  b.payment_method::TEXT AS payment_method,"
+            "  b.payment_reference,"
+            "  b.order_type::TEXT AS order_type,"
+            "  b.table_name, b.customer_name, b.customer_phone,"
+            "  b.print_count, b.created_by,"
+            "  b.created_at::TEXT AS created_at,"
+            "  COALESCE(o.order_number, '') AS order_number,"
+            "  COALESCE(b.table_name, o.table_name, '') AS table_name_resolved,"
+            "  COALESCE(b.customer_name, o.customer_name, '') AS customer_name_resolved,"
+            "  s.name AS company_name"
+            " FROM bill b"
+            " JOIN scope s ON s.company_unique_id = b.company_unique_id"
+            " LEFT JOIN \"order\" o ON o.order_id = b.order_id"
+            " WHERE b.company_unique_id IN (SELECT company_unique_id FROM scope)"
+            " " + date_where +
+            " ORDER BY b.created_at DESC"
         )
-        SELECT
-            b.bill_id,
-            b.bill_number,
-            b.order_id,
-            b.company_unique_id,
-            b.subtotal,
-            b.discount_amount,
-            b.service_charge,
-            b.tax_amount,
-            b.sgst_amount,
-            b.cgst_amount,
-            b.promo_amount,
-            b.promo_code,
-            b.total_payable,
-            b.amount_paid,
-            b.payment_method::TEXT   AS payment_method,
-            b.payment_reference,
-            b.order_type::TEXT       AS order_type,
-            b.table_name,
-            b.customer_name,
-            b.customer_phone,
-            b.print_count,
-            b.created_by,
-            b.created_at::TEXT       AS created_at,
-            COALESCE(o.order_number, '') AS order_number,
-            COALESCE(b.table_name, o.table_name, '') AS table_name_resolved,
-            COALESCE(b.customer_name, o.customer_name, '') AS customer_name_resolved,
-            s.name AS company_name
-        FROM bill b
-        JOIN scope s ON s.company_unique_id = b.company_unique_id
-        LEFT JOIN "order" o ON o.order_id = b.order_id
-        WHERE b.company_unique_id IN (SELECT company_unique_id FROM scope)
-        """ + date_where + """
-        ORDER BY b.created_at DESC
-    """
 
-    rows = db.execute(text(sql_str), params).fetchall()
+        rows = db.execute(text(sql_str), params).fetchall()
 
-    result = []
-    for r in rows:
-        m = r._mapping
-        result.append({
-            "bill_id":           int(m["bill_id"]),
-            "bill_number":       m["bill_number"] or "",
-            "order_id":          int(m["order_id"]) if m["order_id"] else None,
-            "company_unique_id": int(m["company_unique_id"]),
-            "company_name":      m["company_name"] or "",
-            "order_number":      m["order_number"] or "",
-            "table_name":        m["table_name_resolved"] or "",
-            "customer_name":     m["customer_name_resolved"] or "",
-            "customer_phone":    m["customer_phone"] or "",
-            "order_type":        m["order_type"] or "",
-            "payment_method":    m["payment_method"] or "cash",
-            "payment_reference": m["payment_reference"] or "",
-            "subtotal":          float(m["subtotal"]        or 0),
-            "discount_amount":   float(m["discount_amount"] or 0),
-            "service_charge":    float(m["service_charge"]  or 0),
-            "tax_amount":        float(m["tax_amount"]      or 0),
-            "sgst_amount":       float(m["sgst_amount"]     or 0),
-            "cgst_amount":       float(m["cgst_amount"]     or 0),
-            "promo_amount":      float(m["promo_amount"]    or 0),
-            "promo_code":        m["promo_code"] or "",
-            "total_payable":     float(m["total_payable"]   or 0),
-            "amount_paid":       float(m["amount_paid"]     or 0),
-            "print_count":       int(m["print_count"] or 0),
-            "created_by":        int(m["created_by"]) if m["created_by"] else None,
-            "created_at":        m["created_at"] or "",
-        })
+        result = []
+        for r in rows:
+            m = r._mapping
+            result.append({
+                "bill_id":           int(m["bill_id"]),
+                "bill_number":       m["bill_number"] or "",
+                "order_id":          int(m["order_id"]) if m["order_id"] else None,
+                "company_unique_id": int(m["company_unique_id"]),
+                "company_name":      m["company_name"] or "",
+                "order_number":      m["order_number"] or "",
+                "table_name":        m["table_name_resolved"] or "",
+                "customer_name":     m["customer_name_resolved"] or "",
+                "customer_phone":    m["customer_phone"] or "",
+                "order_type":        m["order_type"] or "",
+                "payment_method":    m["payment_method"] or "cash",
+                "payment_reference": m["payment_reference"] or "",
+                "subtotal":          float(m["subtotal"]        or 0),
+                "discount_amount":   float(m["discount_amount"] or 0),
+                "service_charge":    float(m["service_charge"]  or 0),
+                "tax_amount":        float(m["tax_amount"]      or 0),
+                "sgst_amount":       float(m["sgst_amount"]     or 0),
+                "cgst_amount":       float(m["cgst_amount"]     or 0),
+                "promo_amount":      float(m["promo_amount"]    or 0),
+                "promo_code":        m["promo_code"] or "",
+                "total_payable":     float(m["total_payable"]   or 0),
+                "amount_paid":       float(m["amount_paid"]     or 0),
+                "print_count":       int(m["print_count"] or 0),
+                "created_by":        int(m["created_by"]) if m["created_by"] else None,
+                "created_at":        m["created_at"] or "",
+            })
 
-    return result
+        return result
+
+    except Exception as e:
+        tb = traceback.format_exc()
+        raise HTTPException(status_code=500, detail=f"ERROR: {str(e)} | TRACEBACK: {tb}")
 
 @router.get("/bill/order/{order_id}", response_model=BillResponse)
 def get_bill_by_order(order_id: int, db: Session = Depends(get_db)):
