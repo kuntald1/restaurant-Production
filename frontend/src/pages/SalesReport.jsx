@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useApp } from '../context/useApp';
 import { posBillAPI, posOrderAPI, posKotAPI, paymentTransactionAPI } from '../services/api';
 import { Spinner } from '../components/UI';
@@ -44,12 +44,16 @@ export default function SalesReport() {
         c.parant_company_unique_id === parseInt(companyId)
       );
 
-  const load = useCallback(async (explicitFrom, explicitTo) => {
+  const fromDateRef = useRef(fromDate);
+  const toDateRef   = useRef(toDate);
+
+  const load = useCallback(async (fd, td) => {
+    // Use explicit params if given, otherwise use current ref values
+    const from = (typeof fd === 'string') ? fd : fromDateRef.current;
+    const to   = (typeof td === 'string') ? td : toDateRef.current;
+
     if (!allCompanies?.length) { setFetchNote('No companies loaded. Please log in again.'); return; }
     setLoading(true); setBills([]); setFetchNote('');
-
-    const fd = explicitFrom !== undefined ? explicitFrom : fromDate;
-    const td = explicitTo   !== undefined ? explicitTo   : toDate;
 
     const companyMap = {};
     (allCompanies||[]).forEach(c => { companyMap[c.company_unique_id] = c.name; });
@@ -69,8 +73,8 @@ export default function SalesReport() {
       for (const cid of parentIds) {
         try {
           const params = new URLSearchParams();
-          if (fd) params.append('from_date', fd);
-          if (td) params.append('to_date',   td);
+          if (from) params.append('from_date', from);
+          if (to)   params.append('to_date',   to);
           const url = `/pos/bill/company/${cid}${params.toString() ? '?' + params.toString() : ''}`;
           const res = await fetch(url).then(r => r.ok ? r.json() : []);
           if (Array.isArray(res)) {
@@ -87,15 +91,13 @@ export default function SalesReport() {
         } catch {}
       }
 
-      if (allBills.length === 0) {
-        setFetchNote('No bills found for the selected date range and company.');
-      }
+      if (allBills.length === 0) setFetchNote('No bills found for the selected date range and company.');
       setBills(allBills);
     } catch {
       setFetchNote('Error loading bills. Please try again.');
     }
     setLoading(false);
-  }, [companyId, allCompanies, fromDate, toDate]);
+  }, [companyId, allCompanies, visibleCompanies]);
 
   useEffect(() => { load(); }, [companyId]);
 
@@ -185,13 +187,13 @@ export default function SalesReport() {
       {/* Filters */}
       <div style={S.filterBar}>
         <div style={S.fg}><label style={S.fl}>From</label>
-          <input style={S.fi} type="date" value={fromDate} onChange={e=>setFromDate(e.target.value)}/>
+          <input style={S.fi} type="date" value={fromDate} onChange={e=>{ setFromDate(e.target.value); fromDateRef.current = e.target.value; }}/>
         </div>
         <div style={S.fg}><label style={S.fl}>To</label>
-          <input style={S.fi} type="date" value={toDate} onChange={e=>setToDate(e.target.value)}/>
+          <input style={S.fi} type="date" value={toDate} onChange={e=>{ setToDate(e.target.value); toDateRef.current = e.target.value; }}/>
         </div>
         <div style={S.fg}><label style={S.fl}>&nbsp;</label>
-          <button style={{...S.btn, background:'var(--primary)',color:'#fff',border:'none',fontWeight:600}} onClick={load} disabled={loading}>
+          <button style={{...S.btn, background:'var(--primary)',color:'#fff',border:'none',fontWeight:600}} onClick={() => load()} disabled={loading}>
             {loading ? '⏳' : '🔍 Apply'}
           </button>
         </div>
@@ -210,7 +212,12 @@ export default function SalesReport() {
           <div style={{display:'flex',gap:6}}>
             {[['Today',today(),today()],['7d',nAgo(7),today()],['30d',nAgo(30),today()],['90d',nAgo(90),today()]].map(([l,f,t])=>(
               <button key={l} style={{...S.qBtn,...(quickFilter===l?S.qBtnA:{})}}
-                onClick={()=>{ setQuickFilter(l); setFromDate(f); setToDate(t); load(f, t); }}>{l}</button>
+                onClick={()=>{
+                  setQuickFilter(l);
+                  setFromDate(f); fromDateRef.current = f;
+                  setToDate(t);   toDateRef.current   = t;
+                  load(f, t);
+                }}>{l}</button>
             ))}
           </div>
         </div>
