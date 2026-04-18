@@ -44,21 +44,21 @@ export default function SalesReport() {
         c.parant_company_unique_id === parseInt(companyId)
       );
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (explicitFrom, explicitTo) => {
     if (!allCompanies?.length) { setFetchNote('No companies loaded. Please log in again.'); return; }
     setLoading(true); setBills([]); setFetchNote('');
+
+    const fd = explicitFrom !== undefined ? explicitFrom : fromDate;
+    const td = explicitTo   !== undefined ? explicitTo   : toDate;
 
     const companyMap = {};
     (allCompanies||[]).forEach(c => { companyMap[c.company_unique_id] = c.name; });
 
     try {
-      // Determine which parent company IDs to fetch for
-      // For "all": fetch for each parent company (branches are included by the backend)
-      // For a specific company: fetch just that one
       const parentIds = companyId === 'all'
         ? [...new Set(
             visibleCompanies
-              .filter(c => !c.parant_company_unique_id)  // parents only
+              .filter(c => !c.parant_company_unique_id)
               .map(c => c.company_unique_id)
           )]
         : [parseInt(companyId)];
@@ -69,8 +69,8 @@ export default function SalesReport() {
       for (const cid of parentIds) {
         try {
           const params = new URLSearchParams();
-          if (fromDate) params.append('from_date', fromDate);
-          if (toDate)   params.append('to_date',   toDate);
+          if (fd) params.append('from_date', fd);
+          if (td) params.append('to_date',   td);
           const url = `/pos/bill/company/${cid}${params.toString() ? '?' + params.toString() : ''}`;
           const res = await fetch(url).then(r => r.ok ? r.json() : []);
           if (Array.isArray(res)) {
@@ -91,13 +91,13 @@ export default function SalesReport() {
         setFetchNote('No bills found for the selected date range and company.');
       }
       setBills(allBills);
-    } catch (e) {
+    } catch {
       setFetchNote('Error loading bills. Please try again.');
     }
     setLoading(false);
   }, [companyId, allCompanies, fromDate, toDate]);
 
-  useEffect(() => { load(); }, [companyId, fromDate, toDate]);
+  useEffect(() => { load(); }, [companyId]);
 
   // All date filtering is now done server-side in the load() function
   const filtered = bills;
@@ -190,6 +190,11 @@ export default function SalesReport() {
         <div style={S.fg}><label style={S.fl}>To</label>
           <input style={S.fi} type="date" value={toDate} onChange={e=>setToDate(e.target.value)}/>
         </div>
+        <div style={S.fg}><label style={S.fl}>&nbsp;</label>
+          <button style={{...S.btn, background:'var(--primary)',color:'#fff',border:'none',fontWeight:600}} onClick={load} disabled={loading}>
+            {loading ? '⏳' : '🔍 Apply'}
+          </button>
+        </div>
         <div style={S.fg}><label style={S.fl}>Company</label>
           <select style={{...S.fi,minWidth:200}} value={companyId} onChange={e=>setCompanyId(e.target.value)}>
             <option value="all">All Companies</option>
@@ -205,7 +210,7 @@ export default function SalesReport() {
           <div style={{display:'flex',gap:6}}>
             {[['Today',today(),today()],['7d',nAgo(7),today()],['30d',nAgo(30),today()],['90d',nAgo(90),today()]].map(([l,f,t])=>(
               <button key={l} style={{...S.qBtn,...(quickFilter===l?S.qBtnA:{})}}
-                onClick={()=>{setQuickFilter(l);setFromDate(f);setToDate(t);}}>{l}</button>
+                onClick={()=>{ setQuickFilter(l); setFromDate(f); setToDate(t); load(f, t); }}>{l}</button>
             ))}
           </div>
         </div>

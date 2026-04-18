@@ -237,56 +237,100 @@ def get_bills_by_company(
 ):
     """
     Get all bills for a company (and its branches) with optional date range.
-    Used by Sales Report — returns bills newest first.
+    Uses raw SQL with DATE() cast to handle timezone-aware timestamps correctly.
     """
-    from app.models.pos_models import Bill, Order
-    from app.models.company_model import Company
-    from sqlalchemy import or_
-    import datetime
+    from sqlalchemy import text
 
-    # Resolve all company IDs in scope: the company itself + all its child branches
-    child_ids = [
-        c.company_unique_id
-        for c in db.query(Company).filter(Company.parant_company_unique_id == company_id).all()
-    ]
-    scope_ids = [company_id] + child_ids
+    # Build the WHERE clause
+    conditions = ["b.company_unique_id = ANY(:scope_ids)"]
+    params: dict = {"company_id": company_id}
 
-    query = db.query(Bill).filter(Bill.company_unique_id.in_(scope_ids))
-
-    # Optional date filtering on created_at
+    # Resolve branch IDs via subquery inline
     if from_date:
-        try:
-            query = query.filter(Bill.created_at >= datetime.datetime.fromisoformat(from_date))
-        except Exception:
-            pass
+        conditions.append("DATE(b.created_at) >= :from_date")
+        params["from_date"] = from_date
     if to_date:
-        try:
-            # Include the full to_date day
-            end = datetime.datetime.fromisoformat(to_date) + datetime.timedelta(days=1)
-            query = query.filter(Bill.created_at < end)
-        except Exception:
-            pass
+        conditions.append("DATE(b.created_at) <= :to_date")
+        params["to_date"] = to_date
 
-    bills = query.order_by(Bill.created_at.desc()).all()
+    where = " AND ".join(conditions)
 
-    # Fetch company names for response
-    company_map = {
-        c.company_unique_id: c.name
-        for c in db.query(Company).filter(Company.company_unique_id.in_(scope_ids)).all()
-    }
+    sql = text(f"""
+        WITH scope AS (
+            SELECT company_unique_id, name
+            FROM company
+            WHERE company_unique_id = :company_id
+               OR parant_company_unique_id = :company_id
+        )
+        SELECT
+            b.bill_id,
+            b.bill_number,
+            b.order_id,
+            b.company_unique_id,
+            b.subtotal,
+            b.discount_amount,
+            b.service_charge,
+            b.tax_amount,
+            b.sgst_amount,
+            b.cgst_amount,
+            b.promo_amount,
+            b.promo_code,
+            b.total_payable,
+            b.amount_paid,
+            b.payment_method,
+            b.payment_reference,
+            b.order_type,
+            b.table_name,
+            b.customer_name,
+            b.customer_phone,
+            b.print_count,
+            b.created_by,
+            b.created_at,
+            COALESCE(o.order_number, '') AS order_number,
+            COALESCE(b.table_name, o.table_name, '') AS table_name_resolved,
+            COALESCE(b.customer_name, o.customer_name, '') AS customer_name_resolved,
+            s.name AS company_name
+        FROM bill b
+        JOIN scope s ON s.company_unique_id = b.company_unique_id
+        LEFT JOIN "order" o ON o.order_id = b.order_id
+        WHERE b.company_unique_id IN (SELECT company_unique_id FROM scope)
+        {"AND DATE(b.created_at) >= :from_date" if from_date else ""}
+        {"AND DATE(b.created_at) <= :to_date"   if to_date   else ""}
+        ORDER BY b.created_at DESC
+    """)
+
+    rows = db.execute(sql, params).fetchall()
 
     result = []
-    for bill in bills:
-        bill_dict = {c.name: getattr(bill, c.name) for c in bill.__table__.columns}
-        # Attach order details (order_number, table_name, order_type, items)
-        order = db.query(Order).filter(Order.order_id == bill.order_id).first()
-        if order:
-            bill_dict['order_number']  = order.order_number
-            bill_dict['table_name']    = order.table_name
-            bill_dict['order_type']    = order.order_type
-            bill_dict['customer_name'] = order.customer_name
-        bill_dict['company_name'] = company_map.get(bill.company_unique_id, f"Company {bill.company_unique_id}")
-        result.append(bill_dict)
+    for r in rows:
+        m = r._mapping
+        result.append({
+            "bill_id":          m["bill_id"],
+            "bill_number":      m["bill_number"],
+            "order_id":         m["order_id"],
+            "company_unique_id":m["company_unique_id"],
+            "company_name":     m["company_name"] or "",
+            "order_number":     m["order_number"] or "",
+            "table_name":       m["table_name_resolved"] or "",
+            "customer_name":    m["customer_name_resolved"] or "",
+            "customer_phone":   m["customer_phone"] or "",
+            "order_type":       str(m["order_type"] or ""),
+            "payment_method":   str(m["payment_method"] or "cash"),
+            "payment_reference":m["payment_reference"] or "",
+            "subtotal":         float(m["subtotal"] or 0),
+            "discount_amount":  float(m["discount_amount"] or 0),
+            "service_charge":   float(m["service_charge"] or 0),
+            "tax_amount":       float(m["tax_amount"] or 0),
+            "sgst_amount":      float(m["sgst_amount"] or 0),
+            "cgst_amount":      float(m["cgst_amount"] or 0),
+            "promo_amount":     float(m["promo_amount"] or 0),
+            "promo_code":       m["promo_code"] or "",
+            "total_payable":    float(m["total_payable"] or 0),
+            "amount_paid":      float(m["amount_paid"] or 0),
+            "print_count":      m["print_count"] or 0,
+            "created_by":       m["created_by"],
+            "created_at":       str(m["created_at"]) if m["created_at"] else "",
+        })
 
     return result
 
