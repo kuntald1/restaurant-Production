@@ -1003,7 +1003,7 @@ ${kot.notes ? `<div style="padding:4px 0"><span class="bold">Note: </span>${kot.
 <div class="row"><span class="bold">Table:</span><span>${tableName}</span></div>
 <div class="row"><span class="bold">Type:</span><span>${orderData?.order_type || ''}</span></div>
 <div class="row"><span class="bold">Date:</span><span>${new Date().toLocaleString('en-IN')}</span></div>
-<div class="row"><span class="bold">Payment:</span><span>${billData.payment_method || 'Cash'}</span></div>
+<div class="row"><span class="bold">Payment:</span><span>${billData.payment_method === 'credit' ? '💳 Due (Credit)' : (billData.payment_method || 'Cash')}</span></div>
 <div class="line"></div>
 
 <div class="bold" style="margin-bottom:4px">ITEMS</div>
@@ -1024,6 +1024,7 @@ ${sgstAmt > 0 ? `<div class="row"><span>SGST (${sgstRate}%)</span><span>+₹${sg
 ${cgstAmt > 0 ? `<div class="row"><span>CGST (${cgstRate}%)</span><span>+₹${cgstAmt.toFixed(2)}</span></div>` : ''}
 <div class="line"></div>
 <div class="row total-row"><span>TOTAL PAYABLE</span><span>₹${Number(total).toFixed(2)}</span></div>
+${billData.payment_method === 'credit' ? `<div class="line"></div><div class="row" style="font-size:13px;font-weight:700;color:#cc0000"><span>⚠️ DUE AMOUNT</span><span>₹${Number(total).toFixed(2)}</span></div><div class="center" style="font-size:11px;color:#cc0000;margin-top:2px">This amount is due — please pay later</div>` : ''}
 <div class="line"></div>
 
 ${qrUrl ? `<div class="center"><div class="muted" style="margin-bottom:4px">Scan to Pay</div><img src="${qrUrl}" class="qr" onerror="this.style.display='none'"/></div>` : ''}
@@ -1065,7 +1066,7 @@ ${company.hsn ? `<div class="center muted" style="margin-top:4px">HSN: ${company
     if (billObj.table_name)  msg += `*Table:*   ${billObj.table_name}\n`;
     msg += `*Type:*    ${order.order_type || 'dine_in'}\n`;
     msg += `*Date:*    ${new Date().toLocaleString('en-IN')}\n`;
-    msg += `*Payment:* ${billObj.payment_method || ''}\n`;
+    msg += `*Payment:* ${billObj.payment_method === 'credit' ? 'Due (Credit)' : (billObj.payment_method || '')}\n`;
     msg += `${line}\n`;
 
     // Items
@@ -1804,7 +1805,7 @@ ${company.hsn ? `<div class="center muted" style="margin-top:4px">HSN: ${company
                 )}
                 <div style={{ fontWeight: 700, color: 'var(--primary)', marginBottom: 4 }}>🧾 {bill.bill_number}</div>
                 <div style={{ fontSize: 12, color: 'var(--text-2)', display: 'flex', gap: 16 }}>
-                  <span>Payment: <strong>{bill.payment_method?.toUpperCase()}</strong></span>
+                  <span>Payment: <strong>{bill.payment_method === 'credit' ? '💳 Due (Credit)' : bill.payment_method?.toUpperCase()}</strong></span>
                   <span>Paid: <strong>₹{parseFloat(bill.amount_paid || 0).toFixed(2)}</strong></span>
                   {!bill.is_offline && <span>Prints: {bill.print_count}</span>}
                 </div>

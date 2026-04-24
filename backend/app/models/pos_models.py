@@ -47,6 +47,7 @@ class BillPaymentMethodEnum(str, enum.Enum):
     card          = "card"
     split         = "split"
     complimentary = "complimentary"
+    credit        = "credit"
 
 
 # ── RestaurantTable ───────────────────────────────────────────
