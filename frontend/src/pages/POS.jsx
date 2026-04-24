@@ -259,7 +259,8 @@ export default function POS({ onNavigate }) {
   const [deliveryAddr, setDeliveryAddr] = useState('');
 
   // ── Offline state ─────────────────────────────────────────
-  const [isOnline,             setIsOnline]             = useState(false);
+  const [isOnline,             setIsOnline]             = useState(true);
+  const [connectivityReady,    setConnectivityReady]    = useState(false); // hide banner until first check done
   const [isOfflineOrder,       setIsOfflineOrder]       = useState(false);
   const [showOfflineBillModal, setShowOfflineBillModal] = useState(false);
   const [offlinePayMethod,     setOfflinePayMethod]     = useState('cash');
@@ -350,10 +351,11 @@ const loadMenu = useCallback(async () => {
 
   useEffect(() => {
     loadTables(); loadOrders(); loadMenu();
-    // Check real connectivity on initial load — no flash: start as true, only go false if health fails
-    fetch('/health', { method: 'GET', cache: 'no-store', signal: AbortSignal.timeout(3000) })
-      .then(r => { if (!r.ok) setIsOnline(false); })
-      .catch(() => setIsOnline(false));
+    // Check real connectivity on initial load — only show banner after first check completes
+    fetch('/health', { method: 'GET', cache: 'no-store', signal: AbortSignal.timeout(1500) })
+      .then(r => { setIsOnline(r.ok); })
+      .catch(() => { setIsOnline(false); })
+      .finally(() => { setConnectivityReady(true); });
   }, [cid]);
 
   // ── Track pending sync count ─────────────────────────────
@@ -1482,7 +1484,7 @@ ${company.hsn ? `<div class="center muted" style="margin-top:4px">HSN: ${company
     <div style={S.root}>
 
       {/* ── OFFLINE — red top banner ── */}
-      {!isOnline && (
+      {connectivityReady && !isOnline && (
         <div style={{
           position:'fixed', top:0, left:0, right:0, zIndex:9999,
           background:'#dc2626', color:'#fff',
