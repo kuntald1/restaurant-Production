@@ -1447,6 +1447,32 @@ ${company.hsn ? `<div class="center muted" style="margin-top:4px">HSN: ${company
   return (
     <div style={S.root}>
 
+      {/* ── OFFLINE — red top banner ── */}
+      {!isOnline && (
+        <div style={{
+          position:'fixed', top:0, left:0, right:0, zIndex:9999,
+          background:'#dc2626', color:'#fff',
+          padding:'6px 16px', fontSize:13, fontWeight:700,
+          display:'flex', alignItems:'center', justifyContent:'center', gap:8,
+          boxShadow:'0 2px 8px rgba(0,0,0,0.3)',
+        }}>
+          📴 You are offline — Cash &amp; UPI payments still work
+        </div>
+      )}
+
+      {/* ── BACK ONLINE — green top banner ── */}
+      {isOnline && syncStatus.syncing && (
+        <div style={{
+          position:'fixed', top:0, left:0, right:0, zIndex:9999,
+          background:'#16a34a', color:'#fff',
+          padding:'6px 16px', fontSize:13, fontWeight:700,
+          display:'flex', alignItems:'center', justifyContent:'center', gap:8,
+          boxShadow:'0 2px 8px rgba(0,0,0,0.3)',
+        }}>
+          ✅ Back online! Syncing data...
+        </div>
+      )}
+
       {/* ── Sync Status Banners — fixed below the offline red bar ── */}
       {!isOnline && pendingCount > 0 && (
         <div style={{
