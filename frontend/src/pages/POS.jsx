@@ -351,7 +351,7 @@ const loadMenu = useCallback(async () => {
   useEffect(() => {
     loadTables(); loadOrders(); loadMenu();
     // Check real connectivity on initial load
-    fetch('/health', { method: 'HEAD', cache: 'no-store', signal: AbortSignal.timeout(3000) })
+    fetch('/health', { method: 'GET', cache: 'no-store', signal: AbortSignal.timeout(3000) })
       .then(r => setIsOnline(r.ok))
       .catch(() => setIsOnline(false));
   }, [cid]);
@@ -374,7 +374,7 @@ const loadMenu = useCallback(async () => {
   useEffect(() => {
     const checkRealConnectivity = async () => {
       try {
-        const res = await fetch('/health', { method: 'HEAD', cache: 'no-store', signal: AbortSignal.timeout(3000) });
+        const res = await fetch('/health', { method: 'GET', cache: 'no-store', signal: AbortSignal.timeout(3000) });
         return res.ok;
       } catch { return false; }
     };
