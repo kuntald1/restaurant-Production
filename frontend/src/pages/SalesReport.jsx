@@ -117,9 +117,10 @@ export default function SalesReport() {
   const byCompany = {};
   filtered.forEach(b=>{
     const k = b.company_id;
-    if(!byCompany[k]) byCompany[k]={name:b.company_name,revenue:0,orders:0};
+    if(!byCompany[k]) byCompany[k]={name:b.company_name,revenue:0,orders:0,credit:0};
     byCompany[k].revenue+=Number(b.total_payable||b.amount_paid||b.total_amount||0);
     byCompany[k].orders++;
+    if((b.payment_method||'').toLowerCase()==='credit') byCompany[k].credit+=Number(b.total_payable||b.amount_paid||b.total_amount||0);
   });
 
   const byPayment = {};
@@ -146,8 +147,7 @@ export default function SalesReport() {
     ...(totalCredit > 0 ? [{ label:'Credit Amount', value:fmt(totalCredit), icon:'💳', accent:'#dc2626', bg:'#fef2f2' }] : []),
     ...(totalCredit > 0 ? [{ label:'Net Received',  value:fmt(netRevenue),  icon:'✅', accent:'#059669', bg:'#ecfdf5' }] : []),
     ...(totalGst > 0    ? [{ label:'Total GST',     value:fmt(totalGst),    icon:'📋', accent:'#555',    bg:'#f5f5f5' }] : []),
-    ...(totalSgst > 0   ? [{ label:'Total SGST',    value:fmt(totalSgst),   icon:'🟦', accent:'#1e40af', bg:'#eff6ff' }] : []),
-    ...(totalCgst > 0   ? [{ label:'Total CGST',    value:fmt(totalCgst),   icon:'🟦', accent:'#1e40af', bg:'#eff6ff' }] : []),
+
   ];
 
   const openBillDetail = async (bill) => {
@@ -294,7 +294,7 @@ export default function SalesReport() {
             {Object.keys(byCompany).length===0 ? <div style={S.empty}>No bills found — try refreshing or check the date range</div> : (
               <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
                 <thead><tr style={{background:'#f8f8f8'}}>
-                  {['Company','Bills','Revenue','Avg/Bill','Share'].map(h=>(
+                  {['Company','Bills','Revenue','Credit Amt','Net Received','Avg/Bill','Share'].map(h=>(
                     <th key={h} style={{padding:'9px 12px',textAlign:h==='Company'?'left':'right',fontSize:11,fontWeight:700,color:'#888',textTransform:'uppercase',letterSpacing:'.05em',borderBottom:'1px solid #e0e0e0'}}>{h}</th>
                   ))}
                 </tr></thead>
@@ -306,6 +306,8 @@ export default function SalesReport() {
                         <td style={{padding:'10px 12px',fontWeight:600,color:'#222'}}>{co.name}</td>
                         <td style={{padding:'10px 12px',textAlign:'right',color:'#555'}}>{co.orders}</td>
                         <td style={{padding:'10px 12px',textAlign:'right',fontWeight:700,color:'#3d7a3d'}}>{fmt(co.revenue)}</td>
+                        <td style={{padding:'10px 12px',textAlign:'right',fontWeight:700,color:'#dc2626'}}>{co.credit>0?fmt(co.credit):'—'}</td>
+                        <td style={{padding:'10px 12px',textAlign:'right',fontWeight:700,color:'#059669'}}>{fmt(co.revenue-co.credit)}</td>
                         <td style={{padding:'10px 12px',textAlign:'right',color:'#555'}}>{fmt(co.orders?co.revenue/co.orders:0)}</td>
                         <td style={{padding:'10px 12px',textAlign:'right'}}>
                           <div style={{display:'flex',alignItems:'center',gap:6,justifyContent:'flex-end'}}>
@@ -323,6 +325,8 @@ export default function SalesReport() {
                   <td style={{padding:'10px 12px',color:'#333'}}>TOTAL</td>
                   <td style={{padding:'10px 12px',textAlign:'right',color:'#333'}}>{filtered.length}</td>
                   <td style={{padding:'10px 12px',textAlign:'right',color:'#3d7a3d'}}>{fmt(totalRevenue)}</td>
+                  <td style={{padding:'10px 12px',textAlign:'right',color:'#dc2626'}}>{totalCredit>0?fmt(totalCredit):'—'}</td>
+                  <td style={{padding:'10px 12px',textAlign:'right',color:'#059669'}}>{fmt(netRevenue)}</td>
                   <td style={{padding:'10px 12px',textAlign:'right',color:'#333'}}>{fmt(avgOrder)}</td>
                   <td style={{padding:'10px 12px',textAlign:'right',color:'#3d7a3d'}}>100%</td>
                 </tr></tfoot>
@@ -359,7 +363,7 @@ export default function SalesReport() {
                         </td>
                         <td style={{padding:'8px 10px',color:'#555'}}>{b.table_name||b.order_type||'—'}</td>
                         <td style={{padding:'8px 10px'}}>
-                          <span style={{background:'#f0fff4',color:'#166534',fontSize:11,padding:'2px 8px',borderRadius:10,fontWeight:600}}>
+                          <span style={{background:(b.payment_method||'').toLowerCase()==='credit'?'#fef2f2':'#f0fff4',color:(b.payment_method||'').toLowerCase()==='credit'?'#dc2626':'#166534',fontSize:11,padding:'2px 8px',borderRadius:10,fontWeight:600}}>
                             {(b.payment_method||'CASH').toUpperCase()}
                           </span>
                         </td>
