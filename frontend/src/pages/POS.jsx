@@ -259,7 +259,7 @@ export default function POS({ onNavigate }) {
   const [deliveryAddr, setDeliveryAddr] = useState('');
 
   // ── Offline state ─────────────────────────────────────────
-  const [isOnline,             setIsOnline]             = useState(navigator.onLine);
+  const [isOnline,             setIsOnline]             = useState(false);
   const [isOfflineOrder,       setIsOfflineOrder]       = useState(false);
   const [showOfflineBillModal, setShowOfflineBillModal] = useState(false);
   const [offlinePayMethod,     setOfflinePayMethod]     = useState('cash');
@@ -350,6 +350,10 @@ const loadMenu = useCallback(async () => {
 
   useEffect(() => {
     loadTables(); loadOrders(); loadMenu();
+    // Check real connectivity on initial load
+    fetch('/health', { method: 'HEAD', cache: 'no-store', signal: AbortSignal.timeout(3000) })
+      .then(r => setIsOnline(r.ok))
+      .catch(() => setIsOnline(false));
   }, [cid]);
 
   // ── Track pending sync count ─────────────────────────────
@@ -368,8 +372,17 @@ const loadMenu = useCallback(async () => {
 
   // ── Online/Offline detection + auto-sync ──────────────────
   useEffect(() => {
+    const checkRealConnectivity = async () => {
+      try {
+        const res = await fetch('/health', { method: 'HEAD', cache: 'no-store', signal: AbortSignal.timeout(3000) });
+        return res.ok;
+      } catch { return false; }
+    };
+
     const goOffline = () => { setIsOnline(false); updatePendingCount(); };
-    const goOnline  = () => {
+    const goOnline  = async () => {
+      const reallyOnline = await checkRealConnectivity();
+      if (!reallyOnline) { goOffline(); return; }
       setIsOnline(true);
       const count = updatePendingCount();
       if (count > 0) {
@@ -378,9 +391,26 @@ const loadMenu = useCallback(async () => {
       }
       syncOfflineOrders();
     };
+
+    // Poll every 5 seconds to detect real connectivity
+    const poll = setInterval(async () => {
+      const reallyOnline = await checkRealConnectivity();
+      setIsOnline(prev => {
+        if (prev !== reallyOnline) {
+          if (reallyOnline) goOnline();
+          else goOffline();
+        }
+        return reallyOnline;
+      });
+    }, 5000);
+
     window.addEventListener('offline', goOffline);
     window.addEventListener('online',  goOnline);
-    return () => { window.removeEventListener('offline', goOffline); window.removeEventListener('online', goOnline); };
+    return () => {
+      clearInterval(poll);
+      window.removeEventListener('offline', goOffline);
+      window.removeEventListener('online', goOnline);
+    };
   }, []);
 
   // ── Count all pending items for sync ────────────────────
