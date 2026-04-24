@@ -305,8 +305,9 @@ export default function Sidebar({ activePage, onChange, onLogout, subDaysLeft, s
     <aside className={`sidebar ${collapsed ? 'sidebar-collapsed' : ''}`}>
       <div className="sidebar-brand sidebar-brand-c">
 
-        {/* Logo or fallback icon */}
-        <div className="brand-logo-c">
+        {/* Logo or fallback icon — clicking it expands when collapsed */}
+        <div className="brand-logo-c" onClick={collapsed ? () => setCollapsed(false) : undefined}
+          style={{ cursor: collapsed ? 'pointer' : 'default' }}>
           {logoUrl && !imgError
             ? <img src={logoUrl} alt="logo" onError={() => setImgError(true)} style={{ width:'100%', height:'100%', objectFit:'cover', borderRadius:10 }} />
             : <span style={{ fontSize: collapsed ? 20 : 24 }}>🍴</span>
@@ -322,7 +323,7 @@ export default function Sidebar({ activePage, onChange, onLogout, subDaysLeft, s
           </div>
         )}
 
-        <button className="collapse-btn" onClick={() => setCollapsed(!collapsed)}>
+        <button className={`collapse-btn ${collapsed ? 'collapse-btn-fixed' : ''}`} onClick={() => setCollapsed(!collapsed)}>
           {collapsed ? '›' : '‹'}
         </button>
       </div>

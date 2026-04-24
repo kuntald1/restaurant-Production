@@ -70,6 +70,7 @@ html, body, #root { height: 100%; font-family: 'DM Sans', sans-serif; background
 .brand-tagline { display: block; font-size: 10.5px; color: #9880c4; white-space: nowrap; }
 .collapse-btn  { background: #f0ebff; border: 1px solid #d4b8f8; border-radius: 6px; width: 26px; height: 26px; cursor: pointer; color: #7c3aed; display: flex; align-items: center; justify-content: center; font-size: 15px; flex-shrink: 0; transition: all var(--transition); }
 .collapse-btn:hover { background: #ede9fe; color: #6d28d9; }
+.collapse-btn-fixed { position: fixed; left: 52px; top: 20px; z-index: 200; width: 22px; height: 22px; background: #7c3aed; color: #fff; border: 2px solid #fff; border-radius: 50%; font-size: 13px; box-shadow: 0 2px 8px rgba(124,58,237,0.4); }
 /* ── Option C brand styles ── */
 .sidebar-brand-c { background: linear-gradient(135deg, #7c3aed14, #22c55e12) !important; border-bottom: 2px solid #e4d9fc !important; padding: 12px 12px 12px 14px !important; min-height: 68px !important; gap: 10px !important; }
 .brand-logo-c { width: 48px; height: 48px; border-radius: 12px; background: #fff; box-shadow: 0 3px 12px rgba(124,58,237,0.18); display: flex; align-items: center; justify-content: center; flex-shrink: 0; overflow: hidden; border: 2px solid #e4d9fc; }
