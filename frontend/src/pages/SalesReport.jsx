@@ -109,6 +109,9 @@ export default function SalesReport() {
   const totalTax      = filtered.reduce((s,b)=>s+Number(b.tax_amount||0),0);
   const totalSgst     = filtered.reduce((s,b)=>s+Number(b.sgst_amount||0),0);
   const totalCgst     = filtered.reduce((s,b)=>s+Number(b.cgst_amount||0),0);
+  const totalCredit   = filtered.filter(b=>(b.payment_method||'').toLowerCase()==='credit').reduce((s,b)=>s+Number(b.total_payable||b.amount_paid||b.total_amount||0),0);
+  const netRevenue    = totalRevenue - totalCredit;
+  const totalGst      = totalSgst + totalCgst;
   const avgOrder      = filtered.length ? totalRevenue/filtered.length : 0;
 
   const byCompany = {};
@@ -140,9 +143,11 @@ export default function SalesReport() {
     { label:'Total Bills',    value:filtered.length,    icon:'🧾', accent:'#1a5ea8', bg:'#e3f0ff' },
     { label:'Average Bill',   value:fmt(avgOrder),      icon:'📈', accent:'#a06020', bg:'#fff3e0' },
     { label:'Total Discount', value:fmt(totalDiscount), icon:'🏷️', accent:'#7030a0', bg:'#f3e8ff' },
-    { label:'Total Tax',      value:fmt(totalTax),      icon:'📋', accent:'#555',    bg:'#f5f5f5' },
-    ...(totalSgst > 0 ? [{ label:'Total SGST', value:fmt(totalSgst), icon:'🟦', accent:'#1e40af', bg:'#eff6ff' }] : []),
-    ...(totalCgst > 0 ? [{ label:'Total CGST', value:fmt(totalCgst), icon:'🟦', accent:'#1e40af', bg:'#eff6ff' }] : []),
+    ...(totalCredit > 0 ? [{ label:'Credit Amount', value:fmt(totalCredit), icon:'💳', accent:'#dc2626', bg:'#fef2f2' }] : []),
+    ...(totalCredit > 0 ? [{ label:'Net Received',  value:fmt(netRevenue),  icon:'✅', accent:'#059669', bg:'#ecfdf5' }] : []),
+    ...(totalGst > 0    ? [{ label:'Total GST',     value:fmt(totalGst),    icon:'📋', accent:'#555',    bg:'#f5f5f5' }] : []),
+    ...(totalSgst > 0   ? [{ label:'Total SGST',    value:fmt(totalSgst),   icon:'🟦', accent:'#1e40af', bg:'#eff6ff' }] : []),
+    ...(totalCgst > 0   ? [{ label:'Total CGST',    value:fmt(totalCgst),   icon:'🟦', accent:'#1e40af', bg:'#eff6ff' }] : []),
   ];
 
   const openBillDetail = async (bill) => {
