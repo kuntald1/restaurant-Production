@@ -508,6 +508,17 @@ def generate_bill(db: Session, data: BillCreate):
 
     existing = db.query(Bill).filter(Bill.order_id == data.order_id).first()
     if existing:
+        # If order status is NOT billed yet, this is an orphan bill record —
+        # update it with the new payment method and return it
+        if order.order_status != OrderStatusEnum.billed:
+            existing.payment_method = data.payment_method
+            existing.amount_paid    = data.amount_paid
+            if data.payment_reference:
+                existing.payment_reference = data.payment_reference
+            order.order_status = OrderStatusEnum.billed
+            db.commit()
+            db.refresh(existing)
+            return existing
         raise HTTPException(400, "Bill already exists")
 
     if data.discount_amount is not None:
