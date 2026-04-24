@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from decimal import Decimal
 from datetime import date, datetime
 from app.database import SessionLocal
-from app.models.crm_models import CrmCustomer, PromoCode, PromoUsage, CrmFeedback, CrmReservation, SmsSettings
+from app.models.crm_models import CrmCustomer, PromoCode, PromoUsage, CrmFeedback, CrmReservation, SmsSettings, CustomerCreditLog
 from app.models.company_model import Company
 
 router = APIRouter(prefix="/crm", tags=["CRM"])
@@ -144,6 +144,7 @@ class CustomerIn(BaseModel):
     anniversary_date: Optional[str] = None
     address:          Optional[str] = None
     notes:            Optional[str] = None
+    due_amount:       Optional[Decimal] = None
 
 def customer_to_dict(c):
     return {
@@ -152,6 +153,7 @@ def customer_to_dict(c):
         "date_of_birth": to_str(c.date_of_birth), "anniversary_date": to_str(c.anniversary_date),
         "address": c.address, "notes": c.notes, "total_visits": c.total_visits,
         "total_spend": str(c.total_spend), "loyalty_points": c.loyalty_points,
+        "due_amount": str(c.due_amount or 0),
         "is_active": c.is_active, "created_at": to_str(c.created_at),
     }
 
@@ -195,6 +197,75 @@ def delete_customer(customer_id: int, db: Session = Depends(get_db)):
     c.is_active = False
     db.commit()
     return {"message": "Customer deactivated"}
+
+
+# ─────────────────── CUSTOMER CREDIT LOG ───────────────────
+
+class CreditLogIn(BaseModel):
+    customer_id:   int
+    order_id:      Optional[int] = None
+    order_number:  Optional[str] = None
+    bill_id:       Optional[int] = None
+    bill_number:   Optional[str] = None
+    amount:        Decimal          # positive = credit added, negative = payment received
+    payment_status: str = 'credit'  # 'credit' | 'paid'
+    notes:         Optional[str] = None
+
+@router.post("/customers/{company_id}/credit-log")
+def add_credit_log(company_id: int, data: CreditLogIn, db: Session = Depends(get_db)):
+    """Add a credit/payment log entry and update customer's due_amount."""
+    c = db.query(CrmCustomer).filter(CrmCustomer.customer_id == data.customer_id,
+                                      CrmCustomer.company_unique_id == company_id).first()
+    if not c:
+        raise HTTPException(404, "Customer not found")
+    log = CustomerCreditLog(
+        company_unique_id = company_id,
+        customer_id       = data.customer_id,
+        order_id          = data.order_id,
+        order_number      = data.order_number,
+        bill_id           = data.bill_id,
+        bill_number       = data.bill_number,
+        amount            = data.amount,
+        payment_status    = data.payment_status,
+        notes             = data.notes,
+    )
+    db.add(log)
+    # Update customer's running due amount
+    current_due = float(c.due_amount or 0)
+    c.due_amount = round(current_due + float(data.amount), 2)
+    db.commit()
+    db.refresh(log)
+    return {"log_id": log.log_id, "due_amount": str(c.due_amount)}
+
+@router.get("/customers/{company_id}/{customer_id}/credit-log")
+def get_credit_log(company_id: int, customer_id: int, db: Session = Depends(get_db)):
+    """Get credit log for a customer."""
+    logs = db.query(CustomerCreditLog).filter(
+        CustomerCreditLog.company_unique_id == company_id,
+        CustomerCreditLog.customer_id == customer_id,
+    ).order_by(CustomerCreditLog.created_at.desc()).all()
+    return [{
+        "log_id":         l.log_id,
+        "order_id":       l.order_id,
+        "order_number":   l.order_number,
+        "bill_id":        l.bill_id,
+        "bill_number":    l.bill_number,
+        "amount":         str(l.amount),
+        "payment_status": l.payment_status,
+        "notes":          l.notes,
+        "created_at":     to_str(l.created_at),
+    } for l in logs]
+
+@router.put("/customers/{company_id}/due/{customer_id}")
+def update_customer_due(company_id: int, customer_id: int, data: dict, db: Session = Depends(get_db)):
+    """Directly update a customer's due amount (manual adjustment)."""
+    c = db.query(CrmCustomer).filter(CrmCustomer.customer_id == customer_id,
+                                      CrmCustomer.company_unique_id == company_id).first()
+    if not c:
+        raise HTTPException(404, "Customer not found")
+    c.due_amount = round(float(data.get("due_amount", 0)), 2)
+    db.commit()
+    return customer_to_dict(c)
 
 
 # ─────────────────── PROMO CODES ───────────────────

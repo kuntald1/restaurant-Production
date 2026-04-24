@@ -133,6 +133,9 @@ function CustomerPanel({ cid, order, companySettings, onPhoneChange, onCustomerF
                 <div>🏆 {customer.loyalty_points||0} pts · {customer.total_visits||0} visits</div>
               </div>
               <div style={{ marginTop:6, fontSize:12, color:'#166534' }}>₹{Number(customer.total_spend||0).toFixed(0)} lifetime spend</div>
+              <div style={{ marginTop:4, fontSize:12, fontWeight:700, color: Number(customer.due_amount||0) > 0 ? '#dc2626' : '#166534' }}>
+                💳 Due: ₹{Number(customer.due_amount||0).toFixed(2)}
+              </div>
             </div>
           )}
 
@@ -1333,6 +1336,21 @@ ${company.hsn ? `<div class="center muted" style="margin-top:4px">HSN: ${company
       await refresh();
       setModal(null);
       showToast(`🧾 Bill ${b.bill_number} generated! Table freed.`);
+      // If credit payment — log it and update customer due
+      if (payMethod === 'credit' && billCustomerId) {
+        try {
+          await crmCustomerAPI.addCreditLog(cid, {
+            customer_id:    billCustomerId,
+            order_id:       activeOrder.order_id,
+            order_number:   String(activeOrder.order_number || ''),
+            bill_id:        b.bill_id,
+            bill_number:    b.bill_number,
+            amount:         totalRounded,
+            payment_status: 'credit',
+            notes:          `Credit bill generated`,
+          });
+        } catch(e) { console.error('Credit log failed:', e); }
+      }
       // Auto-print receipt
       if (selectedCompany) {
         await printBillReceipt(b, activeOrder, selectedCompany, promoDiscount, promoResult?.code, parseFloat(discount) || 0);
@@ -2070,8 +2088,7 @@ ${company.hsn ? `<div class="center muted" style="margin-top:4px">HSN: ${company
                     { id: 'cash',         label: '💵 Cash' },
                     { id: 'upi',          label: '📲 Personal UPI' },
                     { id: 'merchant',     label: '🏦 Merchant', show: merchantEnabled },
-                    { id: 'split',        label: 'Split' },
-                    { id: 'complimentary',label: 'Complimentary' },
+                    { id: 'credit',       label: '💳 Credit' },
                   ].filter(m => m.show !== false).map(m => (
                     <button key={m.id} type="button"
                       style={{ padding: '7px 14px', border: `1.5px solid ${payMethod===m.id?'var(--primary)':'var(--border)'}`, borderRadius: 8, background: payMethod===m.id?'var(--primary-light)':'var(--white)', color: payMethod===m.id?'var(--primary)':'var(--text-2)', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
@@ -2081,6 +2098,27 @@ ${company.hsn ? `<div class="center muted" style="margin-top:4px">HSN: ${company
                   ))}
                 </div>
               </div>
+
+              {/* ── CREDIT ── */}
+              {payMethod === 'credit' && (
+                <div style={{ border:'1px solid #fca5a5', borderRadius:10, padding:14, background:'#fff5f5', display:'flex', flexDirection:'column', gap:10 }}>
+                  {!billCustomerId && (
+                    <div style={{ background:'#fef2f2', border:'1px solid #fca5a5', borderRadius:8, padding:'10px 14px', fontSize:13, color:'#dc2626', fontWeight:600 }}>
+                      ⚠️ Customer phone number must be searched and matched in CRM before using Credit payment.
+                    </div>
+                  )}
+                  {billCustomerId && headerCustomer && (
+                    <div style={{ background:'#fff', border:'1px solid #fca5a5', borderRadius:8, padding:'10px 14px', fontSize:13 }}>
+                      <div style={{ fontWeight:700, color:'#dc2626', marginBottom:4 }}>💳 Credit to: {headerCustomer.name}</div>
+                      <div style={{ color:'#6b7280', fontSize:12 }}>Current Due: ₹{Number(headerCustomer.due_amount||0).toFixed(2)}</div>
+                      <div style={{ color:'#dc2626', fontSize:12, fontWeight:600, marginTop:4 }}>
+                        New Due after this order: ₹{(Number(headerCustomer.due_amount||0) + totalRounded).toFixed(2)}
+                      </div>
+                    </div>
+                  )}
+                  <div style={{ fontSize:12, color:'#9ca3af' }}>This amount will be added to the customer's due balance. They can pay later.</div>
+                </div>
+              )}
 
               {/* ── PERSONAL UPI — show QR ── */}
               {payMethod === 'upi' && (
@@ -2387,7 +2425,7 @@ ${company.hsn ? `<div class="center muted" style="margin-top:4px">HSN: ${company
                   </div>
                 )}
                 <button style={S.cancelBtn} onClick={() => { setModal(null); setRzpStatus(''); setMerchantSub('merchant_upi'); setPayLinkId(null); setPayLinkPolling(false); }}>Cancel</button>
-                <button style={{ ...S.primaryBtn, background: 'linear-gradient(135deg,var(--green-700),var(--green-500))', border: 'none' }} onClick={generateBill} disabled={saving}>
+                <button style={{ ...S.primaryBtn, background: 'linear-gradient(135deg,var(--green-700),var(--green-500))', border: 'none' }} onClick={generateBill} disabled={saving || (payMethod === 'credit' && !billCustomerId)}>
                   {saving ? 'Generating…' : '🧾 Generate Bill'}
                 </button>
               </div>

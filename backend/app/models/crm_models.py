@@ -37,6 +37,7 @@ class CrmCustomer(Base):
     total_visits      = Column(Integer, default=0)
     total_spend       = Column(Numeric(12, 2), default=0)
     loyalty_points    = Column(Integer, default=0)
+    due_amount        = Column(Numeric(12, 2), default=0)
     is_active         = Column(Boolean, default=True)
     created_at        = Column(TIMESTAMP(timezone=True), server_default=func.now())
     updated_at        = Column(TIMESTAMP(timezone=True), onupdate=func.now())
@@ -74,6 +75,22 @@ class PromoUsage(Base):
     discount_applied  = Column(Numeric(10, 2))
     used_at           = Column(TIMESTAMP(timezone=True), server_default=func.now())
 
+
+
+
+class CustomerCreditLog(Base):
+    __tablename__ = "customer_credit_log"
+    log_id            = Column(BigInteger, Identity(), primary_key=True)
+    company_unique_id = Column(BigInteger, ForeignKey("company.company_unique_id", ondelete="CASCADE"), nullable=False)
+    customer_id       = Column(BigInteger, ForeignKey("crm_customer.customer_id", ondelete="CASCADE"), nullable=False)
+    order_id          = Column(BigInteger, nullable=True)
+    order_number      = Column(String(50), nullable=True)
+    bill_id           = Column(BigInteger, nullable=True)
+    bill_number       = Column(String(50), nullable=True)
+    amount            = Column(Numeric(12, 2), nullable=False)
+    payment_status    = Column(String(20), default='credit')
+    notes             = Column(Text, nullable=True)
+    created_at        = Column(TIMESTAMP(timezone=True), server_default=func.now())
 
 class CrmFeedback(Base):
     __tablename__ = "crm_feedback"

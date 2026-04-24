@@ -192,6 +192,9 @@ export const crmCustomerAPI = {
   create:    (cid, data)   => request('POST', `/crm/customers/${cid}`, data),
   update:    (id, data)    => request('PUT',  `/crm/customers/${id}`, data),
   delete:    (id)          => request('DELETE', `/crm/customers/${id}`),
+  getCreditLog:  (cid, customerId) => request('GET', `/crm/customers/${cid}/${customerId}/credit-log`),
+  addCreditLog:  (cid, data)       => request('POST', `/crm/customers/${cid}/credit-log`, data),
+  updateDue:     (cid, customerId, due_amount) => request('PUT', `/crm/customers/${cid}/due/${customerId}`, { due_amount }),
 };
 
 export const crmPromoAPI = {
