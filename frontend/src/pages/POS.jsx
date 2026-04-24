@@ -615,31 +615,7 @@ const loadMenu = useCallback(async () => {
       await loadOrderDetail(order.order_id);
       showToast(`Order ${order.order_number} created!`);
       resetForm();
-    } catch (e) {
-      // If network error — fall back to offline order creation
-      const isNetworkError = !navigator.onLine || e.message?.includes('fetch') || e.message?.includes('network') || e.message?.includes('Failed to fetch') || e.message?.includes('ERR_NAME_NOT_RESOLVED');
-      if (isNetworkError) {
-        setIsOnline(false);
-        const order = createOfflineOrder({
-          company_unique_id: cid,
-          order_type: orderType,
-          table_id:   orderType === 'dine_in' && selectedTable ? selectedTable.table_id : null,
-          table_name: orderType === 'dine_in' && selectedTable ? selectedTable.table_name : null,
-          covers:     parseInt(covers) || 1,
-          customer_name:  orderType !== 'dine_in' ? (custName || '') : '',
-          customer_phone: orderType !== 'dine_in' ? (custPhone || '') : '',
-          created_by: user?.user_id || null,
-        });
-        setActiveOrder(order);
-        setIsOfflineOrder(true);
-        setModal(null);
-        showToast('📴 Network unavailable — offline order created');
-        resetForm();
-        updatePendingCount();
-      } else {
-        showToast(e.message, 'error');
-      }
-    }
+    } catch (e) { showToast(e.message, 'error'); }
     setSaving(false);
   };
 
