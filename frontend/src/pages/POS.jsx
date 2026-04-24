@@ -350,9 +350,9 @@ const loadMenu = useCallback(async () => {
 
   useEffect(() => {
     loadTables(); loadOrders(); loadMenu();
-    // Check real connectivity on initial load
+    // Check real connectivity on initial load — no flash: start as true, only go false if health fails
     fetch('/health', { method: 'GET', cache: 'no-store', signal: AbortSignal.timeout(3000) })
-      .then(r => setIsOnline(r.ok))
+      .then(r => { if (!r.ok) setIsOnline(false); })
       .catch(() => setIsOnline(false));
   }, [cid]);
 
@@ -374,7 +374,7 @@ const loadMenu = useCallback(async () => {
   useEffect(() => {
     const checkRealConnectivity = async () => {
       try {
-        const res = await fetch('/health', { method: 'GET', cache: 'no-store', signal: AbortSignal.timeout(3000) });
+        const res = await fetch('/health', { method: 'GET', cache: 'no-store', signal: AbortSignal.timeout(1500) });
         return res.ok;
       } catch { return false; }
     };
@@ -392,7 +392,7 @@ const loadMenu = useCallback(async () => {
       syncOfflineOrders();
     };
 
-    // Poll every 5 seconds to detect real connectivity
+    // Poll every 2 seconds for fast offline detection
     const poll = setInterval(async () => {
       const reallyOnline = await checkRealConnectivity();
       setIsOnline(prev => {
@@ -402,14 +402,18 @@ const loadMenu = useCallback(async () => {
         }
         return reallyOnline;
       });
-    }, 5000);
+    }, 2000);
 
-    window.addEventListener('offline', goOffline);
-    window.addEventListener('online',  goOnline);
+    // Browser offline event — fires instantly, no need to verify
+    const onBrowserOffline = () => goOffline();
+    const onBrowserOnline  = () => goOnline();
+
+    window.addEventListener('offline', onBrowserOffline);
+    window.addEventListener('online',  onBrowserOnline);
     return () => {
       clearInterval(poll);
-      window.removeEventListener('offline', goOffline);
-      window.removeEventListener('online', goOnline);
+      window.removeEventListener('offline', onBrowserOffline);
+      window.removeEventListener('online',  onBrowserOnline);
     };
   }, []);
 
