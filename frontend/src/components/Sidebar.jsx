@@ -287,8 +287,9 @@ function MenuItem({ item, collapsed, activePage, onChange, depth = 0 }) {
 }
 
 export default function Sidebar({ activePage, onChange, onLogout, subDaysLeft, subExpired }) {
-  const { user, menus } = useApp();
+  const { user, menus, selectedCompany } = useApp();
   const [collapsed, setCollapsed] = useState(false);
+  const [imgError, setImgError] = useState(false);
 
   const initials = user
     ? `${user.first_name?.[0] || ''}${user.last_name?.[0] || ''}`.toUpperCase()
@@ -296,16 +297,31 @@ export default function Sidebar({ activePage, onChange, onLogout, subDaysLeft, s
   const roleBadge = user?.is_super_admin ? 'Super Admin' : user?.is_admin ? 'Admin' : 'Staff';
   const menuTree = buildMenuTree(menus || []);
 
+  const logoUrl = selectedCompany?.logo_file_name || null;
+  const companyName = selectedCompany?.name || 'Restaurant MS';
+  const branchName = selectedCompany?.city || selectedCompany?.address || 'Management Suite';
+
   return (
     <aside className={`sidebar ${collapsed ? 'sidebar-collapsed' : ''}`}>
-      <div className="sidebar-brand">
-        <div className="brand-icon">🍴</div>
+      <div className="sidebar-brand sidebar-brand-c">
+
+        {/* Logo or fallback icon */}
+        <div className="brand-logo-c">
+          {logoUrl && !imgError
+            ? <img src={logoUrl} alt="logo" onError={() => setImgError(true)} style={{ width:'100%', height:'100%', objectFit:'cover', borderRadius:10 }} />
+            : <span style={{ fontSize: collapsed ? 20 : 24 }}>🍴</span>
+          }
+        </div>
+
+        {/* Name + branch + live badge */}
         {!collapsed && (
-          <div className="brand-text">
-            <span className="brand-name">Restaurant MS</span>
-            <span className="brand-tagline">Management Suite</span>
+          <div className="brand-texts-c">
+            <span className="brand-name-c">{companyName}</span>
+            <span className="brand-branch-c">{branchName}</span>
+            <span className="brand-live-c">● Live</span>
           </div>
         )}
+
         <button className="collapse-btn" onClick={() => setCollapsed(!collapsed)}>
           {collapsed ? '›' : '‹'}
         </button>

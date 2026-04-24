@@ -156,5 +156,8 @@ class CompanyResponse(BaseModel):
     is_sms_enabled:      Optional[bool]    = False
     whatsapp_enabled:    Optional[bool]    = False
 
+    logo_file_name:      Optional[str]     = None
+    image_file_path:     Optional[str]     = None
+
     class Config:
         from_attributes = True
