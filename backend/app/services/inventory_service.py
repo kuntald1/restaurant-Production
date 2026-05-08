@@ -279,27 +279,17 @@ def get_payment_ledger(db: Session, supplier_id: int):
 
 def get_supplier_outstanding(db: Session, supplier_id: int):
     """invoices - payments = outstanding."""
-    result = db.query(
-        func.coalesce(
-            func.sum(
-                func.case(
-                    (SupplierPaymentLedger.transaction_type == 'invoice', SupplierPaymentLedger.amount),
-                    else_=0
-                )
-            ),
-            Decimal("0")
-        ) -
-        func.coalesce(
-            func.sum(
-                func.case(
-                    (SupplierPaymentLedger.transaction_type == 'payment', SupplierPaymentLedger.amount),
-                    else_=0
-                )
-            ),
-            Decimal("0")
-        )
-    ).filter(SupplierPaymentLedger.supplier_id == supplier_id).scalar()
-    return result or Decimal("0")
+    rows = db.query(
+        SupplierPaymentLedger.transaction_type,
+        func.sum(SupplierPaymentLedger.amount).label("total")
+    ).filter(
+        SupplierPaymentLedger.supplier_id == supplier_id
+    ).group_by(SupplierPaymentLedger.transaction_type).all()
+
+    totals = {row.transaction_type: row.total for row in rows}
+    invoices = totals.get("invoice", Decimal("0")) or Decimal("0")
+    payments = totals.get("payment", Decimal("0")) or Decimal("0")
+    return invoices - payments
 
 
 # ─────────────────────────────────────────────
