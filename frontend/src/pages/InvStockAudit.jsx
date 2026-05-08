@@ -4,7 +4,8 @@
  */
 
 import { useEffect, useState } from 'react';
-import { invAuditAPI, invItemAPI, invNodeAPI, invStockAPI } from '../services/api';
+import { invAuditAPI, invItemAPI, invStockAPI } from '../services/api';
+import { useInventoryNodes } from './useInventoryNodes';
 import { Table, Modal, Badge, Spinner, PageHeader, FormField, Input, Select, Textarea, ConfirmDialog } from '../components/UI';
 import { useApp } from '../context/useApp';
 
@@ -16,8 +17,8 @@ export default function InvStockAudit() {
 
   const [audits,  setAudits]  = useState([]);
   const [items,   setItems]   = useState([]);
-  const [nodes,   setNodes]   = useState([]);
   const [loading, setLoading] = useState(false);
+  const { nodes } = useInventoryNodes(cid);
   const [modal,   setModal]   = useState(null);  // 'create' | 'view'
   const [viewAudit, setViewAudit] = useState(null);
   const [confirm, setConfirm] = useState(null);
@@ -33,14 +34,12 @@ export default function InvStockAudit() {
     if (!cid) return;
     setLoading(true);
     try {
-      const [a, i, n] = await Promise.allSettled([
+      const [a, i] = await Promise.allSettled([
         invAuditAPI.getAll(cid),
         invItemAPI.getAll(cid),
-        invNodeAPI.getAll(cid),
       ]);
       setAudits(a.status === 'fulfilled' ? (a.value || []) : []);
       setItems(i.status === 'fulfilled' ? (i.value || []) : []);
-      setNodes(n.status === 'fulfilled' ? (n.value || []) : []);
     } catch {}
     setLoading(false);
   };

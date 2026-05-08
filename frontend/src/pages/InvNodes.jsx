@@ -6,6 +6,7 @@
 
 import { useEffect, useState } from 'react';
 import { invNodeAPI, invStockAPI, invItemAPI } from '../services/api';
+import { useInventoryNodes } from './useInventoryNodes';
 import { Table, Modal, Badge, Spinner, PageHeader, FormField, Input, Select, Textarea, ConfirmDialog } from '../components/UI';
 import { useApp } from '../context/useApp';
 
@@ -19,9 +20,9 @@ export default function InvNodes() {
   const { selectedCompany, showToast, user } = useApp();
   const cid = selectedCompany?.company_unique_id;
 
-  const [nodes,   setNodes]   = useState([]);
   const [items,   setItems]   = useState([]);
   const [loading, setLoading] = useState(false);
+  const { nodes } = useInventoryNodes(cid);
   const [modal,   setModal]   = useState(null); // 'form' | 'stock'
   const [form,    setForm]    = useState(EMPTY);
   const [editId,  setEditId]  = useState(null);
@@ -35,10 +36,9 @@ export default function InvNodes() {
     if (!cid) return;
     setLoading(true);
     try {
-      const [n, i] = await Promise.allSettled([
-        invNodeAPI.getAll(cid), invItemAPI.getAll(cid),
+      const [i] = await Promise.allSettled([
+        invItemAPI.getAll(cid),
       ]);
-      setNodes(n.status === 'fulfilled' ? (n.value || []) : []);
       setItems(i.status === 'fulfilled' ? (i.value || []) : []);
     } catch {}
     setLoading(false);

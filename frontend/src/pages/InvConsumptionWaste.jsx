@@ -7,8 +7,9 @@
 import { useEffect, useState } from 'react';
 import {
   invConsumptionAPI, invWasteAPI, invRecipeAPI,
-  invItemAPI, invNodeAPI, invUomAPI
+  invItemAPI, invUomAPI
 } from '../services/api';
+import { useInventoryNodes } from './useInventoryNodes';
 import { Table, Modal, Badge, Spinner, PageHeader, FormField, Input, Select, Textarea, ConfirmDialog } from '../components/UI';
 import { useApp } from '../context/useApp';
 
@@ -35,8 +36,8 @@ export default function InvConsumptionWaste() {
   const [wastes, setWastes]   = useState([]);
   const [recipes, setRecipes] = useState([]);
   const [items, setItems]     = useState([]);
-  const [nodes, setNodes]     = useState([]);
   const [uoms, setUoms]       = useState([]);
+  const { nodes } = useInventoryNodes(cid);
   const [loading, setLoading] = useState(false);
   const [modal, setModal]     = useState(null);
   const [form, setForm]       = useState(EMPTY_WASTE);
@@ -50,15 +51,14 @@ export default function InvConsumptionWaste() {
     if (!cid) return;
     setLoading(true);
     try {
-      const [c, w, r, i, n, u] = await Promise.allSettled([
+      const [c, w, r, i, u] = await Promise.allSettled([
         invConsumptionAPI.getAll(cid), invWasteAPI.getAll(cid), invRecipeAPI.getAll(cid),
-        invItemAPI.getAll(cid), invNodeAPI.getAll(cid), invUomAPI.getAll(cid),
+        invItemAPI.getAll(cid), invUomAPI.getAll(cid),
       ]);
       setConsumptions(c.status === 'fulfilled' ? (c.value || []) : []);
       setWastes(w.status === 'fulfilled' ? (w.value || []) : []);
       setRecipes(r.status === 'fulfilled' ? (r.value || []) : []);
       setItems(i.status === 'fulfilled' ? (i.value || []) : []);
-      setNodes(n.status === 'fulfilled' ? (n.value || []) : []);
       setUoms(u.status === 'fulfilled' ? (u.value || []) : []);
     } catch {}
     setLoading(false);

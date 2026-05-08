@@ -6,7 +6,8 @@
  */
 
 import { useEffect, useState } from 'react';
-import { invReportsAPI, invStockAPI, invItemAPI, invNodeAPI, invSupplierAPI } from '../services/api';
+import { invReportsAPI, invStockAPI, invItemAPI, invSupplierAPI } from '../services/api';
+import { useInventoryNodes } from './useInventoryNodes';
 import { Spinner, PageHeader, Select, FormField, Badge } from '../components/UI';
 import { useApp } from '../context/useApp';
 
@@ -23,8 +24,8 @@ export default function InvReports() {
   const [balance,   setBalance]   = useState([]);
   const [lowStock,  setLowStock]  = useState([]);
   const [items,     setItems]     = useState([]);
-  const [nodes,     setNodes]     = useState([]);
   const [filterNode, setFilterNode] = useState('');
+  const { nodes } = useInventoryNodes(cid);
 
   // Movement
   const [movement,  setMovement]  = useState([]);
@@ -40,13 +41,11 @@ export default function InvReports() {
     if (!cid) return;
     setLoading(true);
     try {
-      const [i, n, ls] = await Promise.allSettled([
+      const [i, ls] = await Promise.allSettled([
         invItemAPI.getAll(cid),
-        invNodeAPI.getAll(cid),
         invStockAPI.getLowStock(cid),
       ]);
       setItems(i.status === 'fulfilled' ? (i.value || []) : []);
-      setNodes(n.status === 'fulfilled' ? (n.value || []) : []);
       setLowStock(ls.status === 'fulfilled' ? (ls.value || []) : []);
     } catch {}
     setLoading(false);

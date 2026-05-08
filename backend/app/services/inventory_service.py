@@ -8,6 +8,7 @@ from sqlalchemy import func, text
 from datetime import datetime, date
 from decimal import Decimal
 from fastapi import HTTPException
+from sqlalchemy import text
 
 from app.models.inventory_models import (
     UnitOfMeasure, ItemCategory, InventoryItem, InventoryNode,
@@ -793,3 +794,11 @@ def report_stock_movement(db: Session, company_id: int, node_id: int = None, ite
         rows.append({"item_id": r.item_id, "type": "waste_out", "qty": r.qty, "value": r.value})
 
     return rows
+# ── Get branch companies (children of parent company) ─────────
+@router.get("/branches/{company_id}")
+def get_branch_companies(company_id: int, db: Session = Depends(get_db)):
+    result = db.execute(
+        text("SELECT company_unique_id, name, address FROM company WHERE parant_company_unique_id = :cid AND is_active = true"),
+        {"cid": company_id}
+    ).fetchall()
+    return [{"company_unique_id": r[0], "name": r[1], "address": r[2]} for r in result]

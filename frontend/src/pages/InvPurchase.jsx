@@ -5,7 +5,8 @@
  */
 
 import { useEffect, useState } from 'react';
-import { invPoAPI, invGrnAPI, invSupplierAPI, invItemAPI, invNodeAPI } from '../services/api';
+import { invPoAPI, invGrnAPI, invSupplierAPI, invItemAPI } from '../services/api';
+import { useInventoryNodes } from './useInventoryNodes';
 import { Table, Modal, Badge, Spinner, PageHeader, FormField, Input, Select, Textarea, ConfirmDialog } from '../components/UI';
 import { useApp } from '../context/useApp';
 
@@ -65,8 +66,8 @@ export default function InvPurchase() {
   const [grns,      setGrns]      = useState([]);
   const [suppliers, setSuppliers] = useState([]);
   const [items,     setItems]     = useState([]);
-  const [nodes,     setNodes]     = useState([]);
   const [loading,   setLoading]   = useState(false);
+  const { nodes } = useInventoryNodes(cid);
   const [modal,     setModal]     = useState(null);
   const [form,      setForm]      = useState(EMPTY_PO);
   const [lines,     setLines]     = useState([]);
@@ -78,15 +79,14 @@ export default function InvPurchase() {
     if (!cid) return;
     setLoading(true);
     try {
-      const [p, g, s, i, n] = await Promise.allSettled([
+      const [p, g, s, i] = await Promise.allSettled([
         invPoAPI.getAll(cid), invGrnAPI.getAll(cid),
-        invSupplierAPI.getAll(cid), invItemAPI.getAll(cid), invNodeAPI.getAll(cid),
+        invSupplierAPI.getAll(cid), invItemAPI.getAll(cid),
       ]);
       setPos(p.status === 'fulfilled' ? (p.value || []) : []);
       setGrns(g.status === 'fulfilled' ? (g.value || []) : []);
       setSuppliers(s.status === 'fulfilled' ? (s.value || []) : []);
       setItems(i.status === 'fulfilled' ? (i.value || []) : []);
-      setNodes(n.status === 'fulfilled' ? (n.value || []) : []);
     } catch { }
     setLoading(false);
   };

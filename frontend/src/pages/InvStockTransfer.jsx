@@ -5,7 +5,8 @@
  */
 
 import { useEffect, useState } from 'react';
-import { invTransferAPI, invItemAPI, invNodeAPI } from '../services/api';
+import { invTransferAPI, invItemAPI } from '../services/api';
+import { useInventoryNodes } from './useInventoryNodes';
 import { Table, Modal, Badge, Spinner, PageHeader, FormField, Input, Select, Textarea, ConfirmDialog } from '../components/UI';
 import { useApp } from '../context/useApp';
 
@@ -70,8 +71,8 @@ export default function InvStockTransfer() {
 
   const [transfers, setTransfers] = useState([]);
   const [items,     setItems]     = useState([]);
-  const [nodes,     setNodes]     = useState([]);
   const [loading,   setLoading]   = useState(false);
+  const { nodes } = useInventoryNodes(cid);
   const [modal,     setModal]     = useState(null); // 'create'|'edit'|'view'
   const [form,      setForm]      = useState(EMPTY);
   const [lines,     setLines]     = useState([]);
@@ -84,14 +85,12 @@ export default function InvStockTransfer() {
     if (!cid) return;
     setLoading(true);
     try {
-      const [tr, it, nd] = await Promise.allSettled([
+      const [tr, it] = await Promise.allSettled([
         invTransferAPI.getAll(cid),
         invItemAPI.getAll(cid),
-        invNodeAPI.getAll(cid),
       ]);
       setTransfers(tr.status === 'fulfilled' ? (tr.value || []) : []);
       setItems(it.status === 'fulfilled' ? (it.value || []) : []);
-      setNodes(nd.status === 'fulfilled' ? (nd.value || []) : []);
     } catch { setTransfers([]); }
     setLoading(false);
   };
