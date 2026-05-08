@@ -489,10 +489,32 @@ def report_supplier_outstanding(company_id: int, db: Session = Depends(get_db)):
 # ── Branch companies from company table ───────────────────────────────────────
 @router.get("/branches/{company_id}")
 def get_branch_companies(company_id: int, db: Session = Depends(get_db)):
-    """Returns child companies as branches for inventory node dropdowns."""
+    """
+    Returns all child companies (branches) under a parent company.
+    Also returns grandchildren so frontend can build a parent-child tree.
+    Result includes: company_unique_id, name, address1, parant_company_unique_id
+    """
     from sqlalchemy import text
     result = db.execute(
-        text("SELECT company_unique_id, name, address FROM company WHERE parant_company_unique_id = :cid AND is_active = true"),
+        text("""
+            SELECT c.company_unique_id, c.name, c.address1, c.parant_company_unique_id
+            FROM company c
+            WHERE c.parant_company_unique_id = :cid
+               OR c.parant_company_unique_id IN (
+                   SELECT company_unique_id FROM company
+                   WHERE parant_company_unique_id = :cid AND is_active = true
+               )
+            AND c.is_active = true
+            ORDER BY c.parant_company_unique_id NULLS FIRST, c.name
+        """),
         {"cid": company_id}
     ).fetchall()
-    return [{"company_unique_id": r[0], "name": r[1], "address": r[2]} for r in result]
+    return [
+        {
+            "company_unique_id":        r[0],
+            "name":                     r[1],
+            "address":                  r[2] or "",
+            "parant_company_unique_id": r[3],
+        }
+        for r in result
+    ]
