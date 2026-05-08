@@ -221,3 +221,131 @@ export const whatsAppSettingsAPI = {
   get:  (cid)       => request('GET', `/crm/whatsapp-settings/${cid}`),
   save: (cid, data) => request('PUT', `/crm/whatsapp-settings/${cid}`, data),
 };
+
+// ──────────────────────────────────────────────────────────────
+// INVENTORY API — add these exports to your existing api.js file
+// Paste them after the existing smsSettingsAPI block
+// ──────────────────────────────────────────────────────────────
+
+// ── Inventory: Unit of Measure ────────────────────────────────
+export const invUomAPI = {
+  getAll:  (companyId) => request('GET', `/inventory/uom/${companyId}`),
+  create:  (data)      => request('POST', '/inventory/uom', data),
+  update:  (id, data)  => request('PUT', `/inventory/uom/${id}`, data),
+  delete:  (id)        => request('DELETE', `/inventory/uom/${id}`),
+};
+
+// ── Inventory: Item Category ──────────────────────────────────
+export const invCategoryAPI = {
+  getAll:  (companyId) => request('GET', `/inventory/item-category/${companyId}`),
+  create:  (data)      => request('POST', '/inventory/item-category', data),
+  update:  (id, data)  => request('PUT', `/inventory/item-category/${id}`, data),
+  delete:  (id)        => request('DELETE', `/inventory/item-category/${id}`),
+};
+
+// ── Inventory: Item (Ingredient Master) ───────────────────────
+export const invItemAPI = {
+  getAll:  (companyId) => request('GET', `/inventory/item/${companyId}`),
+  getById: (id)        => request('GET', `/inventory/item/detail/${id}`),
+  create:  (data)      => request('POST', '/inventory/item', data),
+  update:  (id, data)  => request('PUT', `/inventory/item/${id}`, data),
+  delete:  (id)        => request('DELETE', `/inventory/item/${id}`),
+};
+
+// ── Inventory: Node (Warehouse / CK / Branch) ─────────────────
+export const invNodeAPI = {
+  getAll:  (companyId) => request('GET', `/inventory/node/${companyId}`),
+  create:  (data)      => request('POST', '/inventory/node', data),
+  update:  (id, data)  => request('PUT', `/inventory/node/${id}`, data),
+  delete:  (id)        => request('DELETE', `/inventory/node/${id}`),
+};
+
+// ── Inventory: Stock Balance ───────────────────────────────────
+export const invStockAPI = {
+  getBalance: (companyId, nodeId) => request('GET', `/inventory/stock-balance/${companyId}${nodeId ? `?node_id=${nodeId}` : ''}`),
+  getLowStock: (companyId)        => request('GET', `/inventory/low-stock/${companyId}`),
+};
+
+// ── Inventory: Supplier ───────────────────────────────────────
+export const invSupplierAPI = {
+  getAll:         (companyId)          => request('GET', `/inventory/supplier/${companyId}`),
+  getById:        (id)                 => request('GET', `/inventory/supplier/detail/${id}`),
+  create:         (data)               => request('POST', '/inventory/supplier', data),
+  update:         (id, data)           => request('PUT', `/inventory/supplier/${id}`, data),
+  delete:         (id)                 => request('DELETE', `/inventory/supplier/${id}`),
+  // Rate card
+  getRateCards:   (supplierId)         => request('GET', `/inventory/supplier/${supplierId}/rate-card`),
+  createRateCard: (data)               => request('POST', '/inventory/supplier/rate-card', data),
+  // Payments
+  getPayments:    (supplierId)         => request('GET', `/inventory/supplier/${supplierId}/payments`),
+  createPayment:  (data)               => request('POST', '/inventory/supplier/payment', data),
+  getOutstanding: (supplierId)         => request('GET', `/inventory/supplier/${supplierId}/outstanding`),
+};
+
+// ── Inventory: Purchase Order ─────────────────────────────────
+export const invPoAPI = {
+  getAll:  (companyId) => request('GET', `/inventory/po/${companyId}`),
+  getById: (id)        => request('GET', `/inventory/po/detail/${id}`),
+  create:  (data)      => request('POST', '/inventory/po', data),
+  update:  (id, data)  => request('PUT', `/inventory/po/${id}`, data),
+  delete:  (id)        => request('DELETE', `/inventory/po/${id}`),
+};
+
+// ── Inventory: GRN ────────────────────────────────────────────
+export const invGrnAPI = {
+  getAll:  (companyId) => request('GET', `/inventory/grn/${companyId}`),
+  getById: (id)        => request('GET', `/inventory/grn/detail/${id}`),
+  create:  (data)      => request('POST', '/inventory/grn', data),
+  update:  (id, data)  => request('PUT', `/inventory/grn/${id}`, data),
+  post:    (id, by)    => request('POST', `/inventory/grn/${id}/post${by ? `?posted_by=${by}` : ''}`),
+  delete:  (id)        => request('DELETE', `/inventory/grn/${id}`),
+};
+
+// ── Inventory: Stock Transfer ─────────────────────────────────
+export const invTransferAPI = {
+  getAll:   (companyId) => request('GET', `/inventory/transfer/${companyId}`),
+  getById:  (id)        => request('GET', `/inventory/transfer/detail/${id}`),
+  create:   (data)      => request('POST', '/inventory/transfer', data),
+  update:   (id, data)  => request('PUT', `/inventory/transfer/${id}`, data),
+  approve:  (id, by)    => request('POST', `/inventory/transfer/${id}/approve${by ? `?approved_by=${by}` : ''}`),
+  delete:   (id)        => request('DELETE', `/inventory/transfer/${id}`),
+};
+
+// ── Inventory: Recipe ─────────────────────────────────────────
+export const invRecipeAPI = {
+  getAll:  (companyId) => request('GET', `/inventory/recipe/${companyId}`),
+  getById: (id)        => request('GET', `/inventory/recipe/detail/${id}`),
+  create:  (data)      => request('POST', '/inventory/recipe', data),
+  update:  (id, data)  => request('PUT', `/inventory/recipe/${id}`, data),
+  delete:  (id)        => request('DELETE', `/inventory/recipe/${id}`),
+};
+
+// ── Inventory: Consumption ────────────────────────────────────
+export const invConsumptionAPI = {
+  getAll:  (companyId) => request('GET', `/inventory/consumption/${companyId}`),
+  create:  (data)      => request('POST', '/inventory/consumption', data),
+};
+
+// ── Inventory: Waste ──────────────────────────────────────────
+export const invWasteAPI = {
+  getAll:  (companyId) => request('GET', `/inventory/waste/${companyId}`),
+  create:  (data)      => request('POST', '/inventory/waste', data),
+  update:  (id, data)  => request('PUT', `/inventory/waste/${id}`, data),
+  delete:  (id)        => request('DELETE', `/inventory/waste/${id}`),
+};
+
+// ── Inventory: Stock Audit ────────────────────────────────────
+export const invAuditAPI = {
+  getAll:  (companyId) => request('GET', `/inventory/audit/${companyId}`),
+  getById: (id)        => request('GET', `/inventory/audit/detail/${id}`),
+  create:  (data)      => request('POST', '/inventory/audit', data),
+  post:    (id, by)    => request('POST', `/inventory/audit/${id}/post${by ? `?posted_by=${by}` : ''}`),
+  delete:  (id)        => request('DELETE', `/inventory/audit/${id}`),
+};
+
+// ── Inventory: Reports ────────────────────────────────────────
+export const invReportsAPI = {
+  stockMovement:       (companyId, params) => request('GET', `/inventory/report/stock-movement/${companyId}?${new URLSearchParams(Object.fromEntries(Object.entries(params).filter(([,v]) => v != null)))}`),
+  lowStock:            (companyId)         => request('GET', `/inventory/report/low-stock/${companyId}`),
+  supplierOutstanding: (companyId)         => request('GET', `/inventory/report/supplier-outstanding/${companyId}`),
+};

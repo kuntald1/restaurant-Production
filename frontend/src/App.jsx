@@ -35,6 +35,14 @@ import QRGenerator from './pages/QRGenerator';
 import WhatsAppLogs from './pages/WhatsAppLogs';
 import ContactLeads from './pages/ContactLeads';
 import Subscriptions from './pages/Subscriptions';
+import InvItemMaster       from './pages/InvItemMaster';
+import InvSuppliers        from './pages/InvSuppliers';
+import InvPurchase         from './pages/InvPurchase';
+import InvTransfer         from './pages/InvTransfer';
+import InvConsumptionWaste from './pages/InvConsumptionWaste';
+import InvStockAudit       from './pages/InvStockAudit';
+import InvReports          from './pages/InvReports';
+import InvNodes            from './pages/InvNodes';
 
 const URL_TO_PAGE = {
   '/home':                        Dashboard,
@@ -78,6 +86,15 @@ const URL_TO_PAGE = {
   '/whatsapp-logs':               WhatsAppLogs,
   '/contact-leads':               ContactLeads,
   '/subscriptions':               Subscriptions,
+  '/inventory/items':             InvItemMaster,
+  '/inventory/suppliers':         InvSuppliers,
+  '/inventory/purchase':          InvPurchase,
+  '/inventory/transfer':          InvTransfer,
+  '/inventory/consumption':       InvConsumptionWaste,
+  '/inventory/audit':             InvStockAudit,
+  '/inventory/reports':           InvReports,
+  '/inventory/nodes':             InvNodes,
+
 };
 
 // ── Offline Banner ────────────────────────────────────────────
