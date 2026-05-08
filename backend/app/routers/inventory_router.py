@@ -1,7 +1,13 @@
 """
-Inventory Router — FastAPI endpoints for all 8 inventory modules.
-Prefix: /inventory
-All endpoints require company_unique_id scoping (no cross-company data leaks).
+Inventory Router — Fixed version.
+Root cause of "No records found" bug:
+  FastAPI matches routes top-to-bottom. When you have:
+    GET /item/{company_id}          <- catches everything
+    GET /item/detail/{item_id}      <- NEVER reached, "detail" treated as company_id = 0
+
+Fix: all "list by company" routes now use /list/{company_id}
+  GET /inventory/item/list/{company_id}   <- lists all items for company
+  GET /inventory/item/{item_id}           <- gets one item
 """
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -41,14 +47,14 @@ def get_db():
 
 
 # ════════════════════════════════════════════════════
-# 1. UNIT OF MEASURE
+# UNIT OF MEASURE
 # ════════════════════════════════════════════════════
 
 @router.post("/uom", response_model=UOMResponse)
 def create_uom(data: UOMCreate, db: Session = Depends(get_db)):
     return svc.create_uom(db, data)
 
-@router.get("/uom/{company_id}", response_model=List[UOMResponse])
+@router.get("/uom/list/{company_id}", response_model=List[UOMResponse])
 def list_uoms(company_id: int, db: Session = Depends(get_db)):
     return svc.get_all_uoms(db, company_id)
 
@@ -68,14 +74,14 @@ def delete_uom(uom_id: int, db: Session = Depends(get_db)):
 
 
 # ════════════════════════════════════════════════════
-# 1b. ITEM CATEGORY
+# ITEM CATEGORY
 # ════════════════════════════════════════════════════
 
 @router.post("/item-category", response_model=ItemCategoryResponse)
 def create_item_category(data: ItemCategoryCreate, db: Session = Depends(get_db)):
     return svc.create_item_category(db, data)
 
-@router.get("/item-category/{company_id}", response_model=List[ItemCategoryResponse])
+@router.get("/item-category/list/{company_id}", response_model=List[ItemCategoryResponse])
 def list_item_categories(company_id: int, db: Session = Depends(get_db)):
     return svc.get_all_item_categories(db, company_id)
 
@@ -95,18 +101,18 @@ def delete_item_category(item_category_id: int, db: Session = Depends(get_db)):
 
 
 # ════════════════════════════════════════════════════
-# 1c. INVENTORY ITEM (Ingredient Master)
+# INVENTORY ITEM
 # ════════════════════════════════════════════════════
 
 @router.post("/item", response_model=InventoryItemResponse)
 def create_item(data: InventoryItemCreate, db: Session = Depends(get_db)):
     return svc.create_inventory_item(db, data)
 
-@router.get("/item/{company_id}", response_model=List[InventoryItemResponse])
+@router.get("/item/list/{company_id}", response_model=List[InventoryItemResponse])
 def list_items(company_id: int, db: Session = Depends(get_db)):
     return svc.get_all_inventory_items(db, company_id)
 
-@router.get("/item/detail/{item_id}", response_model=InventoryItemResponse)
+@router.get("/item/{item_id}", response_model=InventoryItemResponse)
 def get_item(item_id: int, db: Session = Depends(get_db)):
     result = svc.get_inventory_item(db, item_id)
     if not result:
@@ -136,9 +142,16 @@ def delete_item(item_id: int, db: Session = Depends(get_db)):
 def create_node(data: InventoryNodeCreate, db: Session = Depends(get_db)):
     return svc.create_node(db, data)
 
-@router.get("/node/{company_id}", response_model=List[InventoryNodeResponse])
+@router.get("/node/list/{company_id}", response_model=List[InventoryNodeResponse])
 def list_nodes(company_id: int, db: Session = Depends(get_db)):
     return svc.get_all_nodes(db, company_id)
+
+@router.get("/node/{node_id}", response_model=InventoryNodeResponse)
+def get_node_by_id(node_id: int, db: Session = Depends(get_db)):
+    result = svc.get_node(db, node_id)
+    if not result:
+        raise HTTPException(status_code=404, detail="Node not found")
+    return result
 
 @router.put("/node/{node_id}", response_model=InventoryNodeResponse)
 def update_node(node_id: int, data: InventoryNodeUpdate, db: Session = Depends(get_db)):
@@ -173,18 +186,30 @@ def get_low_stock(company_id: int, db: Session = Depends(get_db)):
 
 
 # ════════════════════════════════════════════════════
-# 7. SUPPLIER
+# SUPPLIER
 # ════════════════════════════════════════════════════
 
 @router.post("/supplier", response_model=SupplierResponse)
 def create_supplier(data: SupplierCreate, db: Session = Depends(get_db)):
     return svc.create_supplier(db, data)
 
-@router.get("/supplier/{company_id}", response_model=List[SupplierResponse])
+@router.get("/supplier/list/{company_id}", response_model=List[SupplierResponse])
 def list_suppliers(company_id: int, db: Session = Depends(get_db)):
     return svc.get_all_suppliers(db, company_id)
 
-@router.get("/supplier/detail/{supplier_id}", response_model=SupplierResponse)
+@router.get("/supplier/{supplier_id}/rate-card", response_model=List[SupplierRateCardResponse])
+def get_rate_cards(supplier_id: int, db: Session = Depends(get_db)):
+    return svc.get_rate_cards(db, supplier_id)
+
+@router.get("/supplier/{supplier_id}/payments", response_model=List[SupplierPaymentLedgerResponse])
+def get_payments(supplier_id: int, db: Session = Depends(get_db)):
+    return svc.get_payment_ledger(db, supplier_id)
+
+@router.get("/supplier/{supplier_id}/outstanding")
+def get_outstanding(supplier_id: int, db: Session = Depends(get_db)):
+    return {"supplier_id": supplier_id, "outstanding": svc.get_supplier_outstanding(db, supplier_id)}
+
+@router.get("/supplier/{supplier_id}", response_model=SupplierResponse)
 def get_supplier(supplier_id: int, db: Session = Depends(get_db)):
     result = svc.get_supplier(db, supplier_id)
     if not result:
@@ -205,42 +230,28 @@ def delete_supplier(supplier_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Supplier not found")
     return {"message": "Deleted"}
 
-# Rate Card
 @router.post("/supplier/rate-card", response_model=SupplierRateCardResponse)
 def create_rate_card(data: SupplierRateCardCreate, db: Session = Depends(get_db)):
     return svc.create_rate_card(db, data)
 
-@router.get("/supplier/{supplier_id}/rate-card", response_model=List[SupplierRateCardResponse])
-def get_rate_cards(supplier_id: int, db: Session = Depends(get_db)):
-    return svc.get_rate_cards(db, supplier_id)
-
-# Payment Ledger
 @router.post("/supplier/payment", response_model=SupplierPaymentLedgerResponse)
 def create_payment(data: SupplierPaymentLedgerCreate, db: Session = Depends(get_db)):
     return svc.create_payment_ledger(db, data)
 
-@router.get("/supplier/{supplier_id}/payments", response_model=List[SupplierPaymentLedgerResponse])
-def get_payments(supplier_id: int, db: Session = Depends(get_db)):
-    return svc.get_payment_ledger(db, supplier_id)
-
-@router.get("/supplier/{supplier_id}/outstanding")
-def get_outstanding(supplier_id: int, db: Session = Depends(get_db)):
-    return {"supplier_id": supplier_id, "outstanding": svc.get_supplier_outstanding(db, supplier_id)}
-
 
 # ════════════════════════════════════════════════════
-# 2. PURCHASE ORDER
+# PURCHASE ORDER
 # ════════════════════════════════════════════════════
 
 @router.post("/po", response_model=PurchaseOrderResponse)
 def create_po(data: PurchaseOrderCreate, db: Session = Depends(get_db)):
     return svc.create_po(db, data)
 
-@router.get("/po/{company_id}", response_model=List[PurchaseOrderResponse])
+@router.get("/po/list/{company_id}", response_model=List[PurchaseOrderResponse])
 def list_pos(company_id: int, db: Session = Depends(get_db)):
     return svc.get_all_pos(db, company_id)
 
-@router.get("/po/detail/{po_id}", response_model=PurchaseOrderResponse)
+@router.get("/po/{po_id}", response_model=PurchaseOrderResponse)
 def get_po(po_id: int, db: Session = Depends(get_db)):
     result = svc.get_po(db, po_id)
     if not result:
@@ -270,20 +281,20 @@ def delete_po(po_id: int, db: Session = Depends(get_db)):
 def create_grn(data: GRNCreate, db: Session = Depends(get_db)):
     return svc.create_grn(db, data)
 
-@router.get("/grn/{company_id}", response_model=List[GRNResponse])
+@router.get("/grn/list/{company_id}", response_model=List[GRNResponse])
 def list_grns(company_id: int, db: Session = Depends(get_db)):
     return svc.get_all_grns(db, company_id)
 
-@router.get("/grn/detail/{grn_id}", response_model=GRNResponse)
+@router.post("/grn/{grn_id}/post")
+def post_grn(grn_id: int, posted_by: Optional[str] = Query(None), db: Session = Depends(get_db)):
+    return svc.post_grn(db, grn_id, posted_by)
+
+@router.get("/grn/{grn_id}", response_model=GRNResponse)
 def get_grn(grn_id: int, db: Session = Depends(get_db)):
     result = svc.get_grn(db, grn_id)
     if not result:
         raise HTTPException(status_code=404, detail="GRN not found")
     return result
-
-@router.post("/grn/{grn_id}/post")
-def post_grn(grn_id: int, posted_by: Optional[str] = Query(None), db: Session = Depends(get_db)):
-    return svc.post_grn(db, grn_id, posted_by)
 
 @router.put("/grn/{grn_id}", response_model=GRNResponse)
 def update_grn(grn_id: int, data: GRNUpdate, db: Session = Depends(get_db)):
@@ -308,20 +319,20 @@ def delete_grn(grn_id: int, db: Session = Depends(get_db)):
 def create_transfer(data: StockTransferCreate, db: Session = Depends(get_db)):
     return svc.create_transfer(db, data)
 
-@router.get("/transfer/{company_id}", response_model=List[StockTransferResponse])
+@router.get("/transfer/list/{company_id}", response_model=List[StockTransferResponse])
 def list_transfers(company_id: int, db: Session = Depends(get_db)):
     return svc.get_all_transfers(db, company_id)
 
-@router.get("/transfer/detail/{transfer_id}", response_model=StockTransferResponse)
+@router.post("/transfer/{transfer_id}/approve")
+def approve_transfer(transfer_id: int, approved_by: Optional[str] = Query(None), db: Session = Depends(get_db)):
+    return svc.approve_transfer(db, transfer_id, approved_by)
+
+@router.get("/transfer/{transfer_id}", response_model=StockTransferResponse)
 def get_transfer(transfer_id: int, db: Session = Depends(get_db)):
     result = svc.get_transfer(db, transfer_id)
     if not result:
         raise HTTPException(status_code=404, detail="Transfer not found")
     return result
-
-@router.post("/transfer/{transfer_id}/approve")
-def approve_transfer(transfer_id: int, approved_by: Optional[str] = Query(None), db: Session = Depends(get_db)):
-    return svc.approve_transfer(db, transfer_id, approved_by)
 
 @router.put("/transfer/{transfer_id}", response_model=StockTransferResponse)
 def update_transfer(transfer_id: int, data: StockTransferUpdate, db: Session = Depends(get_db)):
@@ -339,18 +350,18 @@ def delete_transfer(transfer_id: int, db: Session = Depends(get_db)):
 
 
 # ════════════════════════════════════════════════════
-# 6. RECIPE
+# RECIPE
 # ════════════════════════════════════════════════════
 
 @router.post("/recipe", response_model=RecipeResponse)
 def create_recipe(data: RecipeCreate, db: Session = Depends(get_db)):
     return svc.create_recipe(db, data)
 
-@router.get("/recipe/{company_id}", response_model=List[RecipeResponse])
+@router.get("/recipe/list/{company_id}", response_model=List[RecipeResponse])
 def list_recipes(company_id: int, db: Session = Depends(get_db)):
     return svc.get_all_recipes(db, company_id)
 
-@router.get("/recipe/detail/{recipe_id}", response_model=RecipeResponse)
+@router.get("/recipe/{recipe_id}", response_model=RecipeResponse)
 def get_recipe(recipe_id: int, db: Session = Depends(get_db)):
     result = svc.get_recipe(db, recipe_id)
     if not result:
@@ -373,27 +384,27 @@ def delete_recipe(recipe_id: int, db: Session = Depends(get_db)):
 
 
 # ════════════════════════════════════════════════════
-# 3. STOCK CONSUMPTION
+# CONSUMPTION
 # ════════════════════════════════════════════════════
 
 @router.post("/consumption", response_model=StockConsumptionResponse)
 def create_consumption(data: StockConsumptionCreate, db: Session = Depends(get_db)):
     return svc.create_consumption(db, data)
 
-@router.get("/consumption/{company_id}", response_model=List[StockConsumptionResponse])
+@router.get("/consumption/list/{company_id}", response_model=List[StockConsumptionResponse])
 def list_consumptions(company_id: int, db: Session = Depends(get_db)):
     return svc.get_all_consumptions(db, company_id)
 
 
 # ════════════════════════════════════════════════════
-# 4. WASTE
+# WASTE
 # ════════════════════════════════════════════════════
 
 @router.post("/waste", response_model=WasteEntryResponse)
 def create_waste(data: WasteEntryCreate, db: Session = Depends(get_db)):
     return svc.create_waste(db, data)
 
-@router.get("/waste/{company_id}", response_model=List[WasteEntryResponse])
+@router.get("/waste/list/{company_id}", response_model=List[WasteEntryResponse])
 def list_waste(company_id: int, db: Session = Depends(get_db)):
     return svc.get_all_waste(db, company_id)
 
@@ -413,27 +424,27 @@ def delete_waste(waste_id: int, db: Session = Depends(get_db)):
 
 
 # ════════════════════════════════════════════════════
-# 5. STOCK AUDIT
+# STOCK AUDIT
 # ════════════════════════════════════════════════════
 
 @router.post("/audit", response_model=StockAuditResponse)
 def create_audit(data: StockAuditCreate, db: Session = Depends(get_db)):
     return svc.create_audit(db, data)
 
-@router.get("/audit/{company_id}", response_model=List[StockAuditResponse])
+@router.get("/audit/list/{company_id}", response_model=List[StockAuditResponse])
 def list_audits(company_id: int, db: Session = Depends(get_db)):
     return svc.get_all_audits(db, company_id)
 
-@router.get("/audit/detail/{audit_id}", response_model=StockAuditResponse)
+@router.post("/audit/{audit_id}/post")
+def post_audit(audit_id: int, posted_by: Optional[str] = Query(None), db: Session = Depends(get_db)):
+    return svc.post_audit(db, audit_id, posted_by)
+
+@router.get("/audit/{audit_id}", response_model=StockAuditResponse)
 def get_audit(audit_id: int, db: Session = Depends(get_db)):
     result = svc.get_audit(db, audit_id)
     if not result:
         raise HTTPException(status_code=404, detail="Audit not found")
     return result
-
-@router.post("/audit/{audit_id}/post")
-def post_audit(audit_id: int, posted_by: Optional[str] = Query(None), db: Session = Depends(get_db)):
-    return svc.post_audit(db, audit_id, posted_by)
 
 @router.delete("/audit/{audit_id}")
 def delete_audit(audit_id: int, db: Session = Depends(get_db)):
@@ -444,7 +455,7 @@ def delete_audit(audit_id: int, db: Session = Depends(get_db)):
 
 
 # ════════════════════════════════════════════════════
-# 8. REPORTS
+# REPORTS
 # ════════════════════════════════════════════════════
 
 @router.get("/report/stock-movement/{company_id}")
