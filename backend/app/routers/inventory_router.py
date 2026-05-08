@@ -485,3 +485,14 @@ def report_supplier_outstanding(company_id: int, db: Session = Depends(get_db)):
             "outstanding": outstanding,
         })
     return result
+
+# ── Branch companies from company table ───────────────────────────────────────
+@router.get("/branches/{company_id}")
+def get_branch_companies(company_id: int, db: Session = Depends(get_db)):
+    """Returns child companies as branches for inventory node dropdowns."""
+    from sqlalchemy import text
+    result = db.execute(
+        text("SELECT company_unique_id, name, address FROM company WHERE parant_company_unique_id = :cid AND is_active = true"),
+        {"cid": company_id}
+    ).fetchall()
+    return [{"company_unique_id": r[0], "name": r[1], "address": r[2]} for r in result]
