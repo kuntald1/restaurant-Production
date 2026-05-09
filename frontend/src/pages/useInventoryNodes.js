@@ -30,9 +30,15 @@ export function useInventoryNodes(cid, selectedCompany) {
     if (!cid) { setNodes([]); return; }
     setLoadingNodes(true);
 
+    // For branch companies, nodes (WH/CK) belong to parent company
+    // Use selectedCompany.parant_company_unique_id if available
+    const parentCid = selectedCompany?.parant_company_unique_id || cid;
+    // Branches always fetched from root parent company
+    const rootCid   = selectedCompany?.parant_company_unique_id || cid;
+
     Promise.allSettled([
-      invNodeAPI.getAll(cid),
-      invNodeAPI.getBranches(cid),
+      invNodeAPI.getAll(parentCid),       // WH/CK from parent company
+      invNodeAPI.getBranches(rootCid),    // branches from root company
     ]).then(([whResult, branchResult]) => {
 
       // ── Warehouse & Cloud Kitchen — keep integer node_id ─────
