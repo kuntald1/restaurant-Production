@@ -253,12 +253,11 @@ export const invItemAPI = {
 
 // ── Inventory: Node (Warehouse / CK / Branch) ─────────────────
 export const invNodeAPI = {
-  getAll:      (companyId) => request('GET', `/inventory/node/list/${companyId}`),
-  getById:     (id)        => request('GET', `/inventory/node/${id}`),
-  create:      (data)      => request('POST', '/inventory/node', data),
-  update:      (id, data)  => request('PUT', `/inventory/node/${id}`, data),
-  delete:      (id)        => request('DELETE', `/inventory/node/${id}`),
-  getBranches: (companyId) => request('GET', `/inventory/branches/${companyId}`),
+  getAll:  (companyId) => request('GET', `/inventory/node/list/${companyId}`),
+  getById: (id)        => request('GET', `/inventory/node/${id}`),
+  create:  (data)      => request('POST', '/inventory/node', data),
+  update:  (id, data)  => request('PUT', `/inventory/node/${id}`, data),
+  delete:  (id)        => request('DELETE', `/inventory/node/${id}`),
 };
 
 // ── Inventory: Stock Balance ───────────────────────────────────
@@ -302,12 +301,16 @@ export const invGrnAPI = {
 
 // ── Inventory: Stock Transfer ─────────────────────────────────
 export const invTransferAPI = {
-  getAll:  (companyId) => request('GET', `/inventory/transfer/list/${companyId}`),
-  getById: (id)        => request('GET', `/inventory/transfer/${id}`),
-  create:  (data)      => request('POST', '/inventory/transfer', data),
-  update:  (id, data)  => request('PUT', `/inventory/transfer/${id}`, data),
-  approve: (id, by)    => request('POST', `/inventory/transfer/${id}/approve${by ? `?approved_by=${by}` : ''}`),
-  delete:  (id)        => request('DELETE', `/inventory/transfer/${id}`),
+  getAll:       (companyId)    => request('GET', `/inventory/transfer/list/${companyId}`),
+  getById:      (id)           => request('GET', `/inventory/transfer/${id}`),
+  getIncoming:  (toNodeId, companyId) => request('GET', `/inventory/transfer/incoming/${toNodeId}?company_id=${companyId}`),
+  getAllAdmin:   (companyId)   => request('GET', `/inventory/transfer/all/${companyId}`),
+  create:       (data)        => request('POST', '/inventory/transfer', data),
+  update:       (id, data)    => request('PUT', `/inventory/transfer/${id}`, data),
+  dispatch:     (id, by)      => request('POST', `/inventory/transfer/${id}/dispatch${by ? `?dispatched_by=${by}` : ''}`),
+  receive:      (id, by)      => request('POST', `/inventory/transfer/${id}/receive${by ? `?received_by=${by}` : ''}`),
+  reject:       (id, by)      => request('POST', `/inventory/transfer/${id}/reject${by ? `?rejected_by=${by}` : ''}`),
+  delete:       (id)          => request('DELETE', `/inventory/transfer/${id}`),
 };
 
 // ── Inventory: Recipe ─────────────────────────────────────────

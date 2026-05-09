@@ -793,3 +793,121 @@ def report_stock_movement(db: Session, company_id: int, node_id: int = None, ite
         rows.append({"item_id": r.item_id, "type": "waste_out", "qty": r.qty, "value": r.value})
 
     return rows
+
+
+# ─────────────────────────────────────────────
+# STOCK TRANSFER — NEW FLOW
+# dispatch  → deduct from sender, stock goes "in transit"
+# receive   → add to receiver (accept) OR return to sender (reject)
+# ─────────────────────────────────────────────
+
+def dispatch_transfer(db: Session, transfer_id: int, dispatched_by: str = None):
+    """
+    Sender clicks Dispatch:
+    - Deducts stock from from_node
+    - Status → dispatched (in transit)
+    - Does NOT add to to_node yet
+    """
+    tr = _transfer_with_items(db, transfer_id)
+    if not tr:
+        raise HTTPException(status_code=404, detail="Transfer not found")
+    if tr.status not in ("draft", "pending_approval"):
+        raise HTTPException(status_code=400, detail=f"Cannot dispatch transfer in status: {tr.status}")
+    if not tr.from_node_id or not tr.to_node_id:
+        raise HTTPException(status_code=400, detail="Transfer must have both from and to nodes")
+
+    # Deduct from sender ONLY — receiver gets stock only when they accept
+    for item in tr.items:
+        if item.item_id:
+            qty = item.requested_qty
+            _adjust_balance(db, tr.company_unique_id, tr.from_node_id, item.item_id, -qty)
+            item.approved_qty = qty
+
+    tr.status     = "dispatched"
+    tr.approved_by = dispatched_by
+    tr.approved_at = datetime.utcnow()
+    tr.updated_at  = datetime.utcnow()
+    db.commit()
+    return _transfer_with_items(db, transfer_id)
+
+
+def receive_transfer(db: Session, transfer_id: int, received_by: str = None):
+    """
+    Receiver clicks Accept:
+    - Adds stock to to_node
+    - Status → received
+    """
+    tr = _transfer_with_items(db, transfer_id)
+    if not tr:
+        raise HTTPException(status_code=404, detail="Transfer not found")
+    if tr.status != "dispatched":
+        raise HTTPException(status_code=400, detail="Only dispatched transfers can be received")
+
+    for item in tr.items:
+        if item.item_id:
+            qty = item.approved_qty if item.approved_qty is not None else item.requested_qty
+            _adjust_balance(db, tr.company_unique_id, tr.to_node_id, item.item_id, qty)
+            item.received_qty = qty
+
+    tr.status     = "received"
+    tr.updated_by = received_by
+    tr.updated_at = datetime.utcnow()
+    db.commit()
+    return _transfer_with_items(db, transfer_id)
+
+
+def reject_transfer(db: Session, transfer_id: int, rejected_by: str = None):
+    """
+    Receiver clicks Reject:
+    - Returns stock back to from_node
+    - Status → rejected
+    """
+    tr = _transfer_with_items(db, transfer_id)
+    if not tr:
+        raise HTTPException(status_code=404, detail="Transfer not found")
+    if tr.status != "dispatched":
+        raise HTTPException(status_code=400, detail="Only dispatched transfers can be rejected")
+
+    # Return stock to sender
+    for item in tr.items:
+        if item.item_id:
+            qty = item.approved_qty if item.approved_qty is not None else item.requested_qty
+            _adjust_balance(db, tr.company_unique_id, tr.from_node_id, item.item_id, qty)
+
+    tr.status     = "rejected"
+    tr.updated_by = rejected_by
+    tr.updated_at = datetime.utcnow()
+    db.commit()
+    return _transfer_with_items(db, transfer_id)
+
+
+def get_incoming_transfers(db: Session, to_node_id: int, company_unique_id: int):
+    """
+    Incoming transfers for a receiver node — only dispatched ones need action.
+    Used for Stock Receive page.
+    """
+    trs = db.query(StockTransfer).filter(
+        StockTransfer.to_node_id == to_node_id,
+        StockTransfer.company_unique_id == company_unique_id,
+        StockTransfer.is_active == True,
+    ).order_by(StockTransfer.transfer_date.desc()).all()
+    for tr in trs:
+        tr.items = db.query(StockTransferItem).filter(
+            StockTransferItem.transfer_id == tr.transfer_id,
+            StockTransferItem.is_active == True
+        ).all()
+    return trs
+
+
+def get_all_transfers_admin(db: Session, company_id: int):
+    """Admin sees ALL transfers for the company regardless of node."""
+    trs = db.query(StockTransfer).filter(
+        StockTransfer.company_unique_id == company_id,
+        StockTransfer.is_active == True,
+    ).order_by(StockTransfer.transfer_date.desc()).all()
+    for tr in trs:
+        tr.items = db.query(StockTransferItem).filter(
+            StockTransferItem.transfer_id == tr.transfer_id,
+            StockTransferItem.is_active == True
+        ).all()
+    return trs

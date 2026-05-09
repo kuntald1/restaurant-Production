@@ -500,15 +500,14 @@ def get_branch_companies(company_id: int, db: Session = Depends(get_db)):
             SELECT c.company_unique_id, c.name, c.address1, c.parant_company_unique_id
             FROM company c
             WHERE c.is_active = true
-                AND (
-                    c.company_unique_id = :cid
-                    OR c.parant_company_unique_id = :cid
-                    OR c.parant_company_unique_id IN (
-                        SELECT company_unique_id FROM company
-                        WHERE parant_company_unique_id = :cid
-                        AND is_active = true
-                    )
+              AND (
+                c.parant_company_unique_id = :cid
+                OR c.parant_company_unique_id IN (
+                    SELECT company_unique_id FROM company
+                    WHERE parant_company_unique_id = :cid
+                      AND is_active = true
                 )
+              )
             ORDER BY c.parant_company_unique_id NULLS FIRST, c.name
         """),
         {"cid": company_id}
@@ -522,3 +521,54 @@ def get_branch_companies(company_id: int, db: Session = Depends(get_db)):
         }
         for r in result
     ]
+
+
+# ── New Transfer Flow: Dispatch / Receive / Reject ────────────────────────────
+
+@router.post("/transfer/{transfer_id}/dispatch")
+def dispatch_transfer(
+    transfer_id: int,
+    dispatched_by: Optional[str] = Query(None),
+    db: Session = Depends(get_db)
+):
+    """Sender dispatches — deducts stock from from_node, status→dispatched."""
+    return svc.dispatch_transfer(db, transfer_id, dispatched_by)
+
+
+@router.post("/transfer/{transfer_id}/receive")
+def receive_transfer(
+    transfer_id: int,
+    received_by: Optional[str] = Query(None),
+    db: Session = Depends(get_db)
+):
+    """Receiver accepts — adds stock to to_node, status→received."""
+    return svc.receive_transfer(db, transfer_id, received_by)
+
+
+@router.post("/transfer/{transfer_id}/reject")
+def reject_transfer(
+    transfer_id: int,
+    rejected_by: Optional[str] = Query(None),
+    db: Session = Depends(get_db)
+):
+    """Receiver rejects — returns stock to from_node, status→rejected."""
+    return svc.reject_transfer(db, transfer_id, rejected_by)
+
+
+@router.get("/transfer/incoming/{to_node_id}")
+def get_incoming_transfers(
+    to_node_id: int,
+    company_id: int = Query(...),
+    db: Session = Depends(get_db)
+):
+    """Incoming transfers for a receiver node (Stock Receive page)."""
+    return svc.get_incoming_transfers(db, to_node_id, company_id)
+
+
+@router.get("/transfer/all/{company_id}")
+def get_all_transfers_admin(
+    company_id: int,
+    db: Session = Depends(get_db)
+):
+    """Admin view — all transfers for company regardless of node."""
+    return svc.get_all_transfers_admin(db, company_id)
