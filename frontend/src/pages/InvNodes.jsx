@@ -12,7 +12,8 @@ import { useInventoryNodes } from './useInventoryNodes';
 import { Table, Modal, Badge, Spinner, PageHeader, FormField, Input, Select, Textarea, ConfirmDialog } from '../components/UI';
 import { useApp } from '../context/useApp';
 
-const ALL_TYPES   = ['warehouse', 'cloud_kitchen', 'branch'];
+//const ALL_TYPES   = ['warehouse', 'cloud_kitchen', 'branch'];
+const ALL_TYPES = ['warehouse', 'cloud_kitchen'];
 const TYPE_ICON   = { warehouse: '🏭', cloud_kitchen: '☁️', branch: '🏪' };
 const TYPE_COLOR  = { warehouse: 'info', cloud_kitchen: 'warning', branch: 'success' };
 
