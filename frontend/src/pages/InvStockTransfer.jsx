@@ -2,6 +2,7 @@
  * InvStockTransfer.jsx — Internal Stock Transfer between Nodes
  * WH → Cloud Kitchen → Branch
  * Approval flow: draft → pending_approval → dispatched
+ * Nodes loaded dynamically from useInventoryNodes (WH/CK + company branches)
  */
 
 import { useEffect, useState } from 'react';
@@ -21,6 +22,8 @@ const STATUS_COLOR = {
   received: 'success',
 };
 
+const TYPE_ICON = { warehouse: '🏭', cloud_kitchen: '☁️', branch: '🏪' };
+
 const EMPTY = {
   transfer_number: '',
   from_node_id: '',
@@ -31,9 +34,9 @@ const EMPTY = {
 };
 
 function TransferLineEditor({ items, lines, onChange, readOnly }) {
-  const addLine = () => onChange([...lines, { item_id: '', qty: '' }]);
+  const addLine    = () => onChange([...lines, { item_id: '', qty: '' }]);
   const removeLine = (i) => onChange(lines.filter((_, idx) => idx !== i));
-  const setLine = (i, k, v) => onChange(lines.map((l, idx) => idx === i ? { ...l, [k]: v } : l));
+  const setLine    = (i, k, v) => onChange(lines.map((l, idx) => idx === i ? { ...l, [k]: v } : l));
 
   return (
     <div>
@@ -72,14 +75,16 @@ export default function InvStockTransfer() {
   const [transfers, setTransfers] = useState([]);
   const [items,     setItems]     = useState([]);
   const [loading,   setLoading]   = useState(false);
-  const { nodes } = useInventoryNodes(cid);
-  const [modal,     setModal]     = useState(null); // 'create'|'edit'|'view'
+  const [modal,     setModal]     = useState(null);
   const [form,      setForm]      = useState(EMPTY);
   const [lines,     setLines]     = useState([]);
   const [editId,    setEditId]    = useState(null);
   const [viewTr,    setViewTr]    = useState(null);
   const [confirm,   setConfirm]   = useState(null);
   const [saving,    setSaving]    = useState(false);
+
+  // Dynamic nodes: WH + CK from inv_node + Branches from company table
+  const { nodes, getNodeName, getNodeType } = useInventoryNodes(cid);
 
   const load = async () => {
     if (!cid) return;
@@ -98,8 +103,20 @@ export default function InvStockTransfer() {
   useEffect(() => { load(); }, [cid]);
 
   const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }));
-  const getNodeName = (id) => nodes.find(n => n.node_id === id)?.node_name || '—';
-  const getNodeType = (id) => nodes.find(n => n.node_id === id)?.node_type || '';
+
+  // Get icon for a node by its id
+  const getNodeIcon = (nodeId) => {
+    const n = nodes.find(n => String(n.node_id) === String(nodeId));
+    return TYPE_ICON[n?.node_type] || '📍';
+  };
+
+  // Get full display name with icon for table cells
+  const getNodeDisplay = (nodeId) => {
+    const name = getNodeName(nodeId);
+    const icon = getNodeIcon(nodeId);
+    return name === '—' ? '—' : `${icon} ${name}`;
+  };
+
   const getItemName = (id) => items.find(i => i.item_id === id)?.item_name || `Item #${id}`;
 
   const openCreate = () => {
@@ -111,15 +128,15 @@ export default function InvStockTransfer() {
   const openEdit = (row) => {
     setForm({
       transfer_number: row.transfer_number,
-      from_node_id: row.from_node_id || '',
-      to_node_id: row.to_node_id || '',
-      transfer_date: row.transfer_date,
-      status: row.status,
-      notes: row.notes || '',
+      from_node_id:    row.from_node_id || '',
+      to_node_id:      row.to_node_id   || '',
+      transfer_date:   row.transfer_date,
+      status:          row.status,
+      notes:           row.notes || '',
     });
     setLines((row.items || []).map(i => ({
       item_id: i.item_id || '',
-      qty: i.requested_qty,
+      qty:     i.requested_qty,
     })));
     setEditId(row.transfer_id);
     setModal('edit');
@@ -128,20 +145,20 @@ export default function InvStockTransfer() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!form.from_node_id || !form.to_node_id) { showToast('Please select both From and To nodes', 'error'); return; }
-    if (form.from_node_id === form.to_node_id) { showToast('From and To nodes must be different', 'error'); return; }
+    if (String(form.from_node_id) === String(form.to_node_id)) { showToast('From and To nodes must be different', 'error'); return; }
     setSaving(true);
     try {
       const payload = {
         company_unique_id: cid,
-        transfer_number: form.transfer_number,
-        from_node_id: parseInt(form.from_node_id),
-        to_node_id: parseInt(form.to_node_id),
-        transfer_date: form.transfer_date,
-        status: form.status,
-        notes: form.notes,
-        created_by: user?.username,
+        transfer_number:   form.transfer_number,
+        from_node_id:      parseInt(form.from_node_id),
+        to_node_id:        parseInt(form.to_node_id),
+        transfer_date:     form.transfer_date,
+        status:            form.status,
+        notes:             form.notes,
+        created_by:        user?.username,
         items: lines.filter(l => l.item_id && l.qty).map(l => ({
-          item_id: parseInt(l.item_id),
+          item_id:       parseInt(l.item_id),
           requested_qty: parseFloat(l.qty),
         })),
       };
@@ -150,7 +167,7 @@ export default function InvStockTransfer() {
         showToast('Transfer updated!');
       } else {
         await invTransferAPI.create(payload);
-        showToast('Transfer request created!');
+        showToast('Transfer created!');
       }
       setModal(null); load();
     } catch (err) { showToast(err.message, 'error'); }
@@ -161,7 +178,7 @@ export default function InvStockTransfer() {
     try {
       await invTransferAPI.approve(tr.transfer_id, user?.username);
       showToast('Transfer approved — stock moved! ✅');
-      load();
+      load(); setModal(null);
     } catch (err) { showToast(err.message, 'error'); }
   };
 
@@ -171,18 +188,18 @@ export default function InvStockTransfer() {
     setConfirm(null);
   };
 
+  // Table columns — From/To show icon + name
   const cols = [
     { key: 'transfer_number', label: 'Transfer #' },
     { key: 'from_node_id', label: 'From', render: (v) => (
-      <span>{getNodeName(v)} <span style={{ fontSize: 10, color: 'var(--text-3)' }}>({getNodeType(v)})</span></span>
+      <span style={{ fontWeight: 500 }}>{getNodeDisplay(v)}</span>
     )},
     { key: 'to_node_id', label: 'To', render: (v) => (
-      <span>{getNodeName(v)} <span style={{ fontSize: 10, color: 'var(--text-3)' }}>({getNodeType(v)})</span></span>
+      <span style={{ fontWeight: 500 }}>{getNodeDisplay(v)}</span>
     )},
     { key: 'transfer_date', label: 'Date' },
-    { key: 'items', label: 'Items', render: (v) => `${(v || []).length} item(s)` },
+    { key: 'items', label: 'Items', render: (v) => `${(v || []).length} line(s)` },
     { key: 'status', label: 'Status', render: (v) => <Badge variant={STATUS_COLOR[v] || 'default'}>{v?.replace('_', ' ')}</Badge> },
-    { key: 'approved_by', label: 'Approved By', render: (v) => v || '—' },
   ];
 
   if (!selectedCompany) return (
@@ -194,18 +211,18 @@ export default function InvStockTransfer() {
   return (
     <div className="page">
       <PageHeader
-        title="🔄 Stock Transfers"
-        subtitle="Internal stock movement between Warehouse, Cloud Kitchen and Branches"
+        title="🔄 Stock Transfer"
+        subtitle="Transfer stock between Warehouse, Cloud Kitchen and Branches"
         action={<button className="btn btn-primary" onClick={openCreate}>+ New Transfer</button>}
       />
 
       {/* Summary cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 20 }}>
         {[
-          { label: 'Draft', status: 'draft', color: '#6b8f6b' },
+          { label: 'Draft',            status: 'draft',            color: '#6b8f6b' },
           { label: 'Pending Approval', status: 'pending_approval', color: 'var(--warning)' },
-          { label: 'Dispatched', status: 'dispatched', color: 'var(--primary)' },
-          { label: 'Rejected', status: 'rejected', color: 'var(--error)' },
+          { label: 'Dispatched',       status: 'dispatched',       color: 'var(--primary)' },
+          { label: 'Rejected',         status: 'rejected',         color: 'var(--error)' },
         ].map(({ label, status, color }) => {
           const count = transfers.filter(t => t.status === status).length;
           return (
@@ -228,17 +245,17 @@ export default function InvStockTransfer() {
                 <button className="btn btn-sm btn-primary" onClick={() => handleApprove(row)}>✅ Approve</button>
               )}
               {row.status === 'draft' && (
-                <button className="btn btn-sm btn-ghost" onClick={() => openEdit(row)}>✏️</button>
-              )}
-              {row.status === 'draft' && (
-                <button className="btn btn-sm btn-danger" onClick={() => setConfirm({ id: row.transfer_id, name: row.transfer_number })}>🗑️</button>
+                <>
+                  <button className="btn btn-sm btn-ghost" onClick={() => openEdit(row)}>✏️</button>
+                  <button className="btn btn-sm btn-danger" onClick={() => setConfirm({ id: row.transfer_id, name: row.transfer_number })}>🗑️</button>
+                </>
               )}
             </div>
           )}
         />
       )}
 
-      {/* ── Create/Edit Modal ── */}
+      {/* ── Create / Edit Modal ── */}
       {(modal === 'create' || modal === 'edit') && (
         <Modal
           title={modal === 'edit' ? 'Edit Transfer' : 'New Stock Transfer'}
@@ -259,33 +276,41 @@ export default function InvStockTransfer() {
                   <option value="pending_approval">Pending Approval</option>
                 </Select>
               </FormField>
+
+              {/* From Node — all nodes with icons */}
               <FormField label="From Node (Sender)" required>
                 <Select value={form.from_node_id} onChange={set('from_node_id')} required>
                   <option value="">— Select Source —</option>
                   {nodes.map(n => (
                     <option key={n.node_id} value={n.node_id}>
-                      {n.node_name} ({n.node_type})
+                      {n.node_name}
                     </option>
                   ))}
                 </Select>
               </FormField>
+
+              {/* To Node — exclude selected from_node */}
               <FormField label="To Node (Receiver)" required>
                 <Select value={form.to_node_id} onChange={set('to_node_id')} required>
                   <option value="">— Select Destination —</option>
-                  {nodes.filter(n => n.node_id !== parseInt(form.from_node_id)).map(n => (
-                    <option key={n.node_id} value={n.node_id}>
-                      {n.node_name} ({n.node_type})
-                    </option>
-                  ))}
+                  {nodes
+                    .filter(n => String(n.node_id) !== String(form.from_node_id))
+                    .map(n => (
+                      <option key={n.node_id} value={n.node_id}>
+                        {n.node_name}
+                      </option>
+                    ))
+                  }
                 </Select>
               </FormField>
             </div>
 
+            {/* Transfer route preview */}
             {form.from_node_id && form.to_node_id && (
-              <div style={{ background: 'var(--primary-light)', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 14px', marginBottom: 12, fontSize: 13, display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span>🏭 {getNodeName(parseInt(form.from_node_id))}</span>
-                <span style={{ color: 'var(--primary)', fontWeight: 700 }}>→</span>
-                <span>📍 {getNodeName(parseInt(form.to_node_id))}</span>
+              <div style={{ background: 'var(--primary-light)', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 14px', marginBottom: 12, fontSize: 13, display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span>{getNodeDisplay(form.from_node_id)}</span>
+                <span style={{ color: 'var(--primary)', fontWeight: 700, fontSize: 18 }}>→</span>
+                <span>{getNodeDisplay(form.to_node_id)}</span>
               </div>
             )}
 
@@ -309,29 +334,27 @@ export default function InvStockTransfer() {
 
       {/* ── View Modal ── */}
       {modal === 'view' && viewTr && (
-        <Modal title={`Transfer: ${viewTr.transfer_number}`} onClose={() => setModal(null)} size="md">
+        <Modal title={`🔄 ${viewTr.transfer_number}`} onClose={() => setModal(null)} size="md">
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
             <div>
-              <div style={{ fontSize: 11, color: 'var(--text-3)' }}>FROM</div>
-              <div style={{ fontWeight: 600 }}>{getNodeName(viewTr.from_node_id)}</div>
-              <div style={{ fontSize: 11, color: 'var(--text-3)', textTransform: 'uppercase' }}>{getNodeType(viewTr.from_node_id)}</div>
+              <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 4 }}>FROM</div>
+              <div style={{ fontWeight: 600, fontSize: 14 }}>{getNodeDisplay(viewTr.from_node_id)}</div>
             </div>
             <div>
-              <div style={{ fontSize: 11, color: 'var(--text-3)' }}>TO</div>
-              <div style={{ fontWeight: 600 }}>{getNodeName(viewTr.to_node_id)}</div>
-              <div style={{ fontSize: 11, color: 'var(--text-3)', textTransform: 'uppercase' }}>{getNodeType(viewTr.to_node_id)}</div>
+              <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 4 }}>TO</div>
+              <div style={{ fontWeight: 600, fontSize: 14 }}>{getNodeDisplay(viewTr.to_node_id)}</div>
             </div>
             <div>
-              <div style={{ fontSize: 11, color: 'var(--text-3)' }}>DATE</div>
+              <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 4 }}>DATE</div>
               <div style={{ fontWeight: 600 }}>{viewTr.transfer_date}</div>
             </div>
             <div>
-              <div style={{ fontSize: 11, color: 'var(--text-3)' }}>STATUS</div>
+              <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 4 }}>STATUS</div>
               <Badge variant={STATUS_COLOR[viewTr.status] || 'default'}>{viewTr.status?.replace('_', ' ')}</Badge>
             </div>
             {viewTr.approved_by && (
               <div>
-                <div style={{ fontSize: 11, color: 'var(--text-3)' }}>APPROVED BY</div>
+                <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 4 }}>APPROVED BY</div>
                 <div style={{ fontWeight: 600 }}>{viewTr.approved_by}</div>
               </div>
             )}
@@ -354,7 +377,7 @@ export default function InvStockTransfer() {
 
           {(viewTr.status === 'draft' || viewTr.status === 'pending_approval') && (
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
-              <button className="btn btn-primary" onClick={() => { handleApprove(viewTr); setModal(null); }}>
+              <button className="btn btn-primary" onClick={() => handleApprove(viewTr)}>
                 ✅ Approve & Dispatch
               </button>
             </div>
