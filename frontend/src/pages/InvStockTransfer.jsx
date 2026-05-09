@@ -28,7 +28,7 @@ const STATUS_LABEL = {
 const EMPTY = { transfer_number: '', from_node_id: '', to_node_id: '', transfer_date: today(), status: 'draft', notes: '' };
 
 // ── Custom Confirm Modal ──────────────────────────────────────
-function ConfirmModal({ title, message, detail, onConfirm, onCancel, withReason = false }) {
+function ConfirmModal({ title, message, detail, onConfirm, onCancel, withReason = false, danger = false }) {
   const [reason, setReason] = useState('');
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -57,7 +57,7 @@ function ConfirmModal({ title, message, detail, onConfirm, onCancel, withReason 
         <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
           <button className="btn btn-ghost" onClick={onCancel}>Cancel</button>
           <button
-            className="btn btn-primary"
+            className={danger ? 'btn btn-danger' : 'btn btn-primary'}
             onClick={() => onConfirm(reason)}
             disabled={withReason && !reason.trim()}
           >
@@ -637,6 +637,7 @@ export default function InvStockTransfer() {
         <ConfirmModal
           title="❌ Reject Transfer"
           message={`Reject ${confirm.tr.transfer_number}?`}
+          danger={true}
           detail={
             <div>
               <div>From: <b>{getNodeDisplay(confirm.tr.from_node_id)}</b></div>
@@ -657,6 +658,7 @@ export default function InvStockTransfer() {
           message={`Delete ${confirm.tr.transfer_number}? This cannot be undone.`}
           onConfirm={() => handleDelete(confirm.tr.transfer_id)}
           onCancel={() => setConfirm(null)}
+          danger={true}
         />
       )}
     </div>
