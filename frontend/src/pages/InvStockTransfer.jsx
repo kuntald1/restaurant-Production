@@ -276,16 +276,19 @@ export default function InvStockTransfer() {
     setModal('form');
   };
 
-  const validateLines = () => {
+  const validateLines = (skipStockCheck = false) => {
     if (lines.length === 0) { showToast('Add at least one item', 'error'); return false; }
     for (const line of lines) {
       if (!line.item_id) { showToast('Select item for all lines', 'error'); return false; }
       if (!line.qty || parseFloat(line.qty) <= 0) { showToast('Enter valid qty for all items', 'error'); return false; }
-      const bal = stockBalance.find(b => String(b.item_id) === String(line.item_id));
-      const available = bal ? parseFloat(bal.qty_on_hand) : 0;
-      if (parseFloat(line.qty) > available) {
-        showToast(`❌ ${getItemName(parseInt(line.item_id))}: only ${available.toFixed(3)} available`, 'error');
-        return false;
+      // Skip stock check when editing draft (stock check happens at Dispatch)
+      if (!skipStockCheck) {
+        const bal = stockBalance.find(b => String(b.item_id) === String(line.item_id));
+        const available = bal ? parseFloat(bal.qty_on_hand) : 0;
+        if (parseFloat(line.qty) > available) {
+          showToast(`❌ ${getItemName(parseInt(line.item_id))}: only ${available.toFixed(3)} available`, 'error');
+          return false;
+        }
       }
     }
     return true;
@@ -295,7 +298,7 @@ export default function InvStockTransfer() {
     e.preventDefault();
     if (!form.from_node_id || !form.to_node_id) { showToast('Select both From and To nodes', 'error'); return; }
     if (String(form.from_node_id) === String(form.to_node_id)) { showToast('From and To must be different', 'error'); return; }
-    if (!validateLines()) return;
+    if (!validateLines(!!editId)) return;  // skip stock check on edit — checked at Dispatch
     setSaving(true);
     try {
       const payload = {
@@ -415,11 +418,12 @@ export default function InvStockTransfer() {
         {/* Outgoing summary */}
         <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '14px 16px' }}>
           <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-3)', marginBottom: 10, textTransform: 'uppercase', letterSpacing: 1 }}>📤 Outgoing (Sender)</div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
             {[
               { label: 'Draft',      count: outgoing.filter(t => t.status === 'draft').length,      color: '#6b8f6b',        emoji: '📝' },
               { label: 'In Transit', count: outgoing.filter(t => t.status === 'dispatched').length,  color: 'var(--warning)', emoji: '🚚' },
               { label: 'Completed',  count: outgoing.filter(t => t.status === 'received').length,    color: 'var(--success)', emoji: '✅' },
+              { label: 'Rejected',   count: outgoing.filter(t => t.status === 'rejected').length,    color: 'var(--error)',   emoji: '❌' },
             ].map(({ label, count, color, emoji }) => (
               <div key={label} style={{ textAlign: 'center', padding: '8px 4px' }}>
                 <div style={{ fontSize: 22, marginBottom: 2 }}>{emoji}</div>
@@ -453,16 +457,26 @@ export default function InvStockTransfer() {
       {/* Tabs */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 20, borderBottom: '2px solid var(--border)' }}>
         {[
-          ['outgoing', `📤 Outgoing (${outgoing.length})`],
-          ['incoming', `📥 Incoming${pendingReceive > 0 ? ` ⚠️ ${pendingReceive}` : ` (${incoming.length})`}`],
-          ...(isAdmin ? [['all', '📋 All Transfers']] : []),
-        ].map(([key, label]) => (
+          { key: 'outgoing', label: '📤 Outgoing', badge: outgoing.filter(t => t.status === 'draft').length },
+          { key: 'incoming', label: '📥 Incoming', badge: pendingReceive },
+          ...(isAdmin ? [{ key: 'all', label: '📋 All Transfers', badge: 0 }] : []),
+        ].map(({ key, label, badge }) => (
           <button key={key} onClick={() => setTab(key)} style={{
             padding: '8px 18px', border: 'none', background: 'none', cursor: 'pointer',
             fontWeight: tab === key ? 700 : 400, fontSize: 13,
             borderBottom: tab === key ? '2px solid var(--primary)' : '2px solid transparent',
             color: tab === key ? 'var(--primary)' : 'var(--text-3)', marginBottom: -2,
-          }}>{label}</button>
+            display: 'flex', alignItems: 'center', gap: 6,
+          }}>
+            {label}
+            {badge > 0 && (
+              <span style={{
+                background: 'var(--error)', color: '#fff',
+                borderRadius: 99, fontSize: 10, fontWeight: 700,
+                padding: '1px 6px', minWidth: 18, textAlign: 'center',
+              }}>{badge}</span>
+            )}
+          </button>
         ))}
       </div>
 
