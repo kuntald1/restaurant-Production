@@ -170,13 +170,17 @@ export default function InvStockTransfer() {
   const load = async () => {
     if (!cid) return;
     setLoading(true);
+    // Use root company for items/uoms — they are stored under parent company
+    const allCo    = allCompanies || [];
+    const myCo     = allCo.find(c => Number(c.company_unique_id) === Number(cid));
+    const rootCid  = myCo?.parant_company_unique_id || cid;
     try {
       const [out, inc, it, u, nl] = await Promise.allSettled([
         invTransferAPI.getAll(cid),
         invTransferAPI.getIncoming(myNodeId, cid),
-        invItemAPI.getAll(cid),
-        invUomAPI.getAll(cid),
-        invTransferAPI.getNodeLookup(cid),
+        invItemAPI.getAll(rootCid),
+        invUomAPI.getAll(rootCid),
+        invTransferAPI.getNodeLookup(rootCid),
       ]);
       setOutgoing(out.status === 'fulfilled' ? (out.value || []) : []);
       setIncoming(inc.status === 'fulfilled' ? (inc.value || []) : []);
@@ -190,13 +194,19 @@ export default function InvStockTransfer() {
   useEffect(() => { load(); }, [cid]);
 
   // Load stock balance when From Node changes
+  // Use root/parent company_id for stock balance — stock is stored under parent company
   useEffect(() => {
     const fromInt = nodeIdToInt(form.from_node_id);
-    if (!fromInt || !cid) { setStockBalance([]); return; }
-    invStockAPI.getBalance(cid, fromInt)
+    if (!fromInt) { setStockBalance([]); return; }
+    // Find root company (stock is always stored under parent company_unique_id)
+    const allCo    = allCompanies || [];
+    const myCo     = allCo.find(c => Number(c.company_unique_id) === Number(cid));
+    const parentId = myCo?.parant_company_unique_id || cid;
+    const stockCid = parentId; // use parent company for stock lookup
+    invStockAPI.getBalance(stockCid, fromInt)
       .then(rows => setStockBalance(rows || []))
       .catch(() => setStockBalance([]));
-  }, [form.from_node_id, cid]);
+  }, [form.from_node_id, cid, allCompanies]);
 
   // Apply pending edit when nodes load
   useEffect(() => {
