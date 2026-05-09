@@ -61,25 +61,44 @@ export function useInventoryNodes(cid, selectedCompany) {
       const orderedBranches = [];
       const added = new Set();
 
-      // Self (logged-in company) — always add even if not in raw list
-      // (When cid=3 has no children, getBranches(3) returns empty — still need self)
-      const selfCompany = raw.find(b => Number(b.company_unique_id) === cidNum);
-      const selfName    = selfCompany?.name || selectedCompany?.name || `Company #${cid}`;
-      orderedBranches.push({
-        node_id:    `b_${cidNum}`,
-        node_name:  selfName,
-        node_icon:  TYPE_ICON.branch,
-        node_label: `${TYPE_ICON.branch} ${selfName}`,
-        node_type:  'branch',
-        is_branch:  true,
-        depth:      1,
-      });
-      added.add(cidNum);
+      // rootCidNum = the top-level parent company (whose nodes/branches we loaded)
+      const rootCidNum = Number(rootCid);
 
-      // Direct children — depth 2
+      // Build branch tree from root company perspective
+      // Find root company itself
+      const rootCompany = raw.find(b => Number(b.company_unique_id) === rootCidNum);
+      if (rootCompany) {
+        orderedBranches.push({
+          node_id:    `b_${rootCompany.company_unique_id}`,
+          node_name:  rootCompany.name,
+          node_icon:  TYPE_ICON.branch,
+          node_label: `${TYPE_ICON.branch} ${rootCompany.name}`,
+          node_type:  'branch',
+          is_branch:  true,
+          depth:      1,
+        });
+        added.add(rootCompany.company_unique_id);
+      }
+
+      // Always ensure logged-in company (cid) is in the list
+      if (!added.has(cidNum)) {
+        const selfName = selectedCompany?.name || `Branch #${cid}`;
+        orderedBranches.push({
+          node_id:    `b_${cidNum}`,
+          node_name:  selfName,
+          node_icon:  TYPE_ICON.branch,
+          node_label: `${TYPE_ICON.branch} ${selfName}`,
+          node_type:  'branch',
+          is_branch:  true,
+          depth:      1,
+        });
+        added.add(cidNum);
+      }
+
+      // Direct children of root — depth 2
       const directChildren = raw.filter(b =>
-        Number(b.parant_company_unique_id) === cidNum &&
-        Number(b.company_unique_id) !== cidNum
+        Number(b.parant_company_unique_id) === rootCidNum &&
+        Number(b.company_unique_id) !== rootCidNum
       );
 
       for (const child of directChildren) {
