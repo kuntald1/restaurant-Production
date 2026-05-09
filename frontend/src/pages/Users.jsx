@@ -255,9 +255,20 @@ export default function Users() {
                       </optgroup>
                     ))
                   ) : isAdmin ? (
-                    childCompanies.length === 0
-                      ? <option value={user?.company_unique_id}>{adminCompany?.name || 'My Company'}</option>
-                      : childCompanies.map(c => <option key={c.company_unique_id} value={c.company_unique_id}>{c.name}</option>)
+                    <>
+                      {/* Parent company (admin's own company) */}
+                      {adminCompany && (
+                        <option value={adminCompany.company_unique_id}>
+                          🏪 {adminCompany.name}
+                        </option>
+                      )}
+                      {/* Child companies (branches) with indent */}
+                      {childCompanies.map(c => (
+                        <option key={c.company_unique_id} value={c.company_unique_id}>
+                          　↳ {c.name}
+                        </option>
+                      ))}
+                    </>
                   ) : null}
                 </Select>
               </FormField>
