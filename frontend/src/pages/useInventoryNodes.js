@@ -28,20 +28,34 @@ export function useInventoryNodes(cid, selectedCompany, allCompanies) {
 
   useEffect(() => {
     if (!cid) { setNodes([]); return; }
+    // Wait for allCompanies to load before proceeding
+    // This prevents wrong rootCid calculation on first render
     setLoadingNodes(true);
 
-    // Find root (top-level) company for this user
-    // Check selectedCompany.parant_company_unique_id first
-    // Then look up in allCompanies for the full record
-    const myParent = selectedCompany?.parant_company_unique_id
-      || (allCompanies || []).find(c => c.company_unique_id === Number(cid))?.parant_company_unique_id
-      || null;
-    const parentCid = myParent || cid;  // WH/CK from parent (or self if no parent)
-    const rootCid   = myParent || cid;  // branches from root company
+    // Find root (top-level) company — walk up the tree until no parent
+    const allCo = allCompanies || [];
+    const myCo  = allCo.find(c => Number(c.company_unique_id) === Number(cid));
+    // Direct parent
+    const myParentId = myCo?.parant_company_unique_id
+                    || selectedCompany?.parant_company_unique_id
+                    || null;
+    // Walk up to find true root (grandparent check)
+    let rootId = myParentId;
+    if (rootId) {
+      const parentCo = allCo.find(c => Number(c.company_unique_id) === Number(rootId));
+      if (parentCo?.parant_company_unique_id) {
+        rootId = parentCo.parant_company_unique_id; // go one more level up
+      }
+    }
+    const parentCid = myParentId || cid;  // WH/CK from direct parent
+    const rootCid   = rootId || cid;      // branches from root company
+
+    // Always fetch branches from BOTH self and parent to ensure complete list
+    const branchCid = rootCid !== cid ? rootCid : cid;
 
     Promise.allSettled([
-      invNodeAPI.getAll(parentCid),       // WH/CK from parent company
-      invNodeAPI.getBranches(rootCid),    // branches from root company
+      invNodeAPI.getAll(parentCid),          // WH/CK from parent (or self)
+      invNodeAPI.getBranches(branchCid),     // branches from root company
     ]).then(([whResult, branchResult]) => {
 
       // ── Warehouse & Cloud Kitchen — keep integer node_id ─────
@@ -138,7 +152,7 @@ export function useInventoryNodes(cid, selectedCompany, allCompanies) {
 
       setNodes([...whAndCk, ...orderedBranches]);
     }).finally(() => setLoadingNodes(false));
-  }, [cid]);
+  }, [cid, allCompanies?.length]);
 
   // Find node by ID — handles both "b_3" (form) and 3 (from DB)
   const findNode = (nodeId) => {
