@@ -501,7 +501,8 @@ def get_branch_companies(company_id: int, db: Session = Depends(get_db)):
             FROM company c
             WHERE c.is_active = true
               AND (
-                c.parant_company_unique_id = :cid
+                c.company_unique_id = :cid
+                OR c.parant_company_unique_id = :cid
                 OR c.parant_company_unique_id IN (
                     SELECT company_unique_id FROM company
                     WHERE parant_company_unique_id = :cid
