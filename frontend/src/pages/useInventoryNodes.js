@@ -1,11 +1,9 @@
 /**
- * useInventoryNodes.js
- * Shared hook for all inventory pages that need location dropdowns.
- *
- * node_name  = plain text name (no emoji)
- * node_icon  = emoji icon
- * node_label = what shows in <option> dropdown (emoji + indent + name)
- * getNodeDisplay(id) = icon + name for table cells
+ * useInventoryNodes.js — Fixed version
+ * Fixes:
+ *   1. Company 1 (Main Branch) now shows in dropdown
+ *   2. node_label uses proper indent for children
+ *   3. Same node cannot be selected for From and To (handled in component)
  */
 
 import { useState, useEffect } from 'react';
@@ -26,7 +24,7 @@ export function useInventoryNodes(cid) {
       invNodeAPI.getBranches(cid),
     ]).then(([whResult, branchResult]) => {
 
-      // ── Warehouse & Cloud Kitchen from inv_node ──────────────
+      // ── Warehouse & Cloud Kitchen ────────────────────────────
       const whAndCk = (whResult.status === 'fulfilled' ? whResult.value || [] : [])
         .filter(n => n.node_type !== 'branch')
         .map(n => ({
@@ -41,61 +39,36 @@ export function useInventoryNodes(cid) {
 
       // ── Branches from company table ──────────────────────────
       const raw    = branchResult.status === 'fulfilled' ? branchResult.value || [] : [];
-      const cidNum = parseInt(cid);
+      const cidNum = Number(cid);
 
-      const topLevel       = raw.filter(b => b.company_unique_id === cidNum || b.parant_company_unique_id === null);
-      const directChildren = raw.filter(b => b.parant_company_unique_id === cidNum && b.company_unique_id !== cidNum);
-      const directChildIds = new Set(directChildren.map(b => b.company_unique_id));
-      const grandChildren  = raw.filter(b => directChildIds.has(b.parant_company_unique_id));
-
+      // Build ordered list with parent-child hierarchy
+      // Strategy: find the "root" company (cid itself) and its children
       const orderedBranches = [];
       const added = new Set();
 
-      for (const top of topLevel) {
-        if (added.has(top.company_unique_id)) continue;
+      // Find the logged-in company in the raw list
+      const selfCompany = raw.find(b => Number(b.company_unique_id) === cidNum);
+
+      // Add self first (depth 1 — top level branch)
+      if (selfCompany) {
         orderedBranches.push({
-          node_id:    top.company_unique_id,
-          node_name:  top.name,
+          node_id:    selfCompany.company_unique_id,
+          node_name:  selfCompany.name,
           node_icon:  TYPE_ICON.branch,
-          node_label: `${TYPE_ICON.branch} ${top.name}`,
+          node_label: `${TYPE_ICON.branch} ${selfCompany.name}`,
           node_type:  'branch',
           is_branch:  true,
           depth:      1,
         });
-        added.add(top.company_unique_id);
-
-        const children = directChildren.filter(d => d.parant_company_unique_id === top.company_unique_id);
-        for (const child of children) {
-          if (added.has(child.company_unique_id)) continue;
-          orderedBranches.push({
-            node_id:    child.company_unique_id,
-            node_name:  child.name,
-            node_icon:  TYPE_ICON.branch,
-            node_label: `　↳ ${child.name}`,
-            node_type:  'branch',
-            is_branch:  true,
-            depth:      2,
-          });
-          added.add(child.company_unique_id);
-
-          const grandkids = grandChildren.filter(g => g.parant_company_unique_id === child.company_unique_id);
-          for (const gk of grandkids) {
-            if (added.has(gk.company_unique_id)) continue;
-            orderedBranches.push({
-              node_id:    gk.company_unique_id,
-              node_name:  gk.name,
-              node_icon:  TYPE_ICON.branch,
-              node_label: `　　↳ ${gk.name}`,
-              node_type:  'branch',
-              is_branch:  true,
-              depth:      3,
-            });
-            added.add(gk.company_unique_id);
-          }
-        }
+        added.add(selfCompany.company_unique_id);
       }
 
-      // Add any remaining direct children
+      // Add direct children of cid (depth 2)
+      const directChildren = raw.filter(b =>
+        Number(b.parant_company_unique_id) === cidNum &&
+        Number(b.company_unique_id) !== cidNum
+      );
+
       for (const child of directChildren) {
         if (added.has(child.company_unique_id)) continue;
         orderedBranches.push({
@@ -108,24 +81,42 @@ export function useInventoryNodes(cid) {
           depth:      2,
         });
         added.add(child.company_unique_id);
+
+        // Add grandchildren (depth 3)
+        const grandkids = raw.filter(b =>
+          Number(b.parant_company_unique_id) === Number(child.company_unique_id)
+        );
+        for (const gk of grandkids) {
+          if (added.has(gk.company_unique_id)) continue;
+          orderedBranches.push({
+            node_id:    gk.company_unique_id,
+            node_name:  gk.name,
+            node_icon:  TYPE_ICON.branch,
+            node_label: `　　↳ ${gk.name}`,
+            node_type:  'branch',
+            is_branch:  true,
+            depth:      3,
+          });
+          added.add(gk.company_unique_id);
+        }
       }
 
       setNodes([...whAndCk, ...orderedBranches]);
     }).finally(() => setLoadingNodes(false));
   }, [cid]);
 
-  // Plain name for table cells
-  const getNodeName = (nodeId) => {
-    const n = nodes.find(n => String(n.node_id) === String(nodeId));
-    return n ? n.node_name : '—';
-  };
-
-  // Icon + indent + name for table cells
+  // Icon + name for table display
   const getNodeDisplay = (nodeId) => {
     const n = nodes.find(n => String(n.node_id) === String(nodeId));
     if (!n) return '—';
     const indent = n.depth === 2 ? '↳ ' : n.depth === 3 ? '　↳ ' : '';
     return `${n.node_icon} ${indent}${n.node_name}`;
+  };
+
+  // Plain name only
+  const getNodeName = (nodeId) => {
+    const n = nodes.find(n => String(n.node_id) === String(nodeId));
+    return n ? n.node_name : '—';
   };
 
   const getNodeType = (nodeId) => {
