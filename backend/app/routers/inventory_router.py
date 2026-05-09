@@ -500,15 +500,15 @@ def get_branch_companies(company_id: int, db: Session = Depends(get_db)):
             SELECT c.company_unique_id, c.name, c.address1, c.parant_company_unique_id
             FROM company c
             WHERE c.is_active = true
-              AND (
-                c.company_unique_id = :cid
-                OR c.parant_company_unique_id = :cid
-                OR c.parant_company_unique_id IN (
-                    SELECT company_unique_id FROM company
-                    WHERE parant_company_unique_id = :cid
-                      AND is_active = true
+                AND (
+                    c.company_unique_id = :cid
+                    OR c.parant_company_unique_id = :cid
+                    OR c.parant_company_unique_id IN (
+                        SELECT company_unique_id FROM company
+                        WHERE parant_company_unique_id = :cid
+                        AND is_active = true
+                    )
                 )
-              )
             ORDER BY c.parant_company_unique_id NULLS FIRST, c.name
         """),
         {"cid": company_id}
