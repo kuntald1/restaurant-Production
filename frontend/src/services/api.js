@@ -253,11 +253,12 @@ export const invItemAPI = {
 
 // ── Inventory: Node (Warehouse / CK / Branch) ─────────────────
 export const invNodeAPI = {
-  getAll:  (companyId) => request('GET', `/inventory/node/list/${companyId}`),
-  getById: (id)        => request('GET', `/inventory/node/${id}`),
-  create:  (data)      => request('POST', '/inventory/node', data),
-  update:  (id, data)  => request('PUT', `/inventory/node/${id}`, data),
-  delete:  (id)        => request('DELETE', `/inventory/node/${id}`),
+  getAll:      (companyId) => request('GET', `/inventory/node/list/${companyId}`),
+  getById:     (id)        => request('GET', `/inventory/node/${id}`),
+  create:      (data)      => request('POST', '/inventory/node', data),
+  update:      (id, data)  => request('PUT', `/inventory/node/${id}`, data),
+  delete:      (id)        => request('DELETE', `/inventory/node/${id}`),
+  getBranches: (companyId) => request('GET', `/inventory/branches/${companyId}`),
 };
 
 // ── Inventory: Stock Balance ───────────────────────────────────
