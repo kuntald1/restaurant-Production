@@ -136,7 +136,7 @@ function LineEditor({ items, lines, onChange, stockBalance, uoms }) {
 
 // ── Main Component ────────────────────────────────────────────
 export default function InvStockTransfer() {
-  const { selectedCompany, user, showToast } = useApp();
+  const { selectedCompany, user, showToast, allCompanies } = useApp();
   const cid     = selectedCompany?.company_unique_id;
   const isAdmin = user?.is_admin || user?.is_super_admin;
   const myNodeId = cid;
@@ -158,7 +158,7 @@ export default function InvStockTransfer() {
   const [saving,      setSaving]      = useState(false);
   const [stockBalance,setStockBalance]= useState([]);
 
-  const { nodes, getNodeDisplay: _getNodeDisplay } = useInventoryNodes(cid, selectedCompany);
+  const { nodes, getNodeDisplay: _getNodeDisplay } = useInventoryNodes(cid, selectedCompany, allCompanies);
 
   // Use global lookup for cross-company display (e.g. Alok seeing Main Warehouse)
   const getNodeDisplay = (nodeId) => {
@@ -469,16 +469,23 @@ export default function InvStockTransfer() {
                 <Input type="date" value={form.transfer_date} onChange={set('transfer_date')} required />
               </FormField>
               <div />
-              {/* From Node — locked to logged-in user's own company/node */}
+              {/* From Node — filtered by role:
+                   Admin       → all nodes
+                   Parent co.  → WH + CK + own branch (manages warehouse)
+                   Branch co.  → only own branch
+              */}
               <FormField label="From Node (Sender)" required>
                 <Select value={form.from_node_id} onChange={(e) => { set('from_node_id')(e); setLines([]); }} required>
                   <option value="">— Select Source —</option>
                   {nodes.filter(n => {
-                    // Show only nodes that belong to the logged-in company
-                    // Branch users: only their own branch (b_{cid})
-                    // Admin/WH users: all nodes
                     if (isAdmin) return true;
-                    return String(n.node_id) === `b_${cid}` || n.node_id === cid;
+                    const isParentCompany = !selectedCompany?.parant_company_unique_id;
+                    if (isParentCompany) {
+                      // Parent company users can send from WH, CK, or their own branch
+                      return !n.is_branch || String(n.node_id) === `b_${cid}`;
+                    }
+                    // Child branch users can only send from their own branch
+                    return String(n.node_id) === `b_${cid}`;
                   }).map(n => <option key={n.node_id} value={n.node_id}>{n.node_label}</option>)}
                 </Select>
               </FormField>

@@ -22,7 +22,7 @@ export function nodeIdToInt(nodeId) {
   return s.startsWith('b_') ? parseInt(s.slice(2)) : parseInt(s);
 }
 
-export function useInventoryNodes(cid, selectedCompany) {
+export function useInventoryNodes(cid, selectedCompany, allCompanies) {
   const [nodes,        setNodes]        = useState([]);
   const [loadingNodes, setLoadingNodes] = useState(false);
 
@@ -30,11 +30,14 @@ export function useInventoryNodes(cid, selectedCompany) {
     if (!cid) { setNodes([]); return; }
     setLoadingNodes(true);
 
-    // For branch companies, nodes (WH/CK) belong to parent company
-    // Use selectedCompany.parant_company_unique_id if available
-    const parentCid = selectedCompany?.parant_company_unique_id || cid;
-    // Branches always fetched from root parent company
-    const rootCid   = selectedCompany?.parant_company_unique_id || cid;
+    // Find root (top-level) company for this user
+    // Check selectedCompany.parant_company_unique_id first
+    // Then look up in allCompanies for the full record
+    const myParent = selectedCompany?.parant_company_unique_id
+      || (allCompanies || []).find(c => c.company_unique_id === Number(cid))?.parant_company_unique_id
+      || null;
+    const parentCid = myParent || cid;  // WH/CK from parent (or self if no parent)
+    const rootCid   = myParent || cid;  // branches from root company
 
     Promise.allSettled([
       invNodeAPI.getAll(parentCid),       // WH/CK from parent company
