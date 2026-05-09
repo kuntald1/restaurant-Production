@@ -818,17 +818,18 @@ def dispatch_transfer(db: Session, transfer_id: int, dispatched_by: str = None):
         raise HTTPException(status_code=400, detail="Transfer must have both from and to nodes")
 
     # ── Validate stock availability before deducting ──────────
+    # Note: stock balance uses node_id only — company_unique_id may differ
+    # for branch transfers (branch cid=3 but stock stored under parent cid=1)
     for item in tr.items:
         if item.item_id:
             qty = item.requested_qty
+            # Search by node_id + item_id only (not company_unique_id)
             balance = db.query(StockBalance).filter(
-                StockBalance.company_unique_id == tr.company_unique_id,
-                StockBalance.node_id           == tr.from_node_id,
-                StockBalance.item_id           == item.item_id,
+                StockBalance.node_id == tr.from_node_id,
+                StockBalance.item_id == item.item_id,
             ).first()
             available = balance.qty_on_hand if balance else Decimal("0")
             if qty > available:
-                # Get item name for error message
                 from app.models.inventory_models import InventoryItem
                 inv_item = db.query(InventoryItem).filter(InventoryItem.item_id == item.item_id).first()
                 item_name = inv_item.item_name if inv_item else f"Item #{item.item_id}"
@@ -837,11 +838,17 @@ def dispatch_transfer(db: Session, transfer_id: int, dispatched_by: str = None):
                     detail=f"Insufficient stock for '{item_name}': requested {qty}, available {available}"
                 )
 
-    # Deduct from sender ONLY — receiver gets stock only when they accept
+    # Deduct from sender — use balance's company_unique_id for correct adjustment
     for item in tr.items:
         if item.item_id:
             qty = item.requested_qty
-            _adjust_balance(db, tr.company_unique_id, tr.from_node_id, item.item_id, -qty)
+            balance = db.query(StockBalance).filter(
+                StockBalance.node_id == tr.from_node_id,
+                StockBalance.item_id == item.item_id,
+            ).first()
+            # Use actual company_unique_id from balance record (handles branch transfers)
+            stock_company_id = balance.company_unique_id if balance else tr.company_unique_id
+            _adjust_balance(db, stock_company_id, tr.from_node_id, item.item_id, -qty)
             item.approved_qty = qty
 
     tr.status     = "dispatched"
@@ -889,11 +896,16 @@ def reject_transfer(db: Session, transfer_id: int, rejected_by: str = None):
     if tr.status != "dispatched":
         raise HTTPException(status_code=400, detail="Only dispatched transfers can be rejected")
 
-    # Return stock to sender
+    # Return stock to sender — use node_id based lookup for correct company
     for item in tr.items:
         if item.item_id:
             qty = item.approved_qty if item.approved_qty is not None else item.requested_qty
-            _adjust_balance(db, tr.company_unique_id, tr.from_node_id, item.item_id, qty)
+            from_bal = db.query(StockBalance).filter(
+                StockBalance.node_id == tr.from_node_id,
+                StockBalance.item_id == item.item_id,
+            ).first()
+            stock_company_id = from_bal.company_unique_id if from_bal else tr.company_unique_id
+            _adjust_balance(db, stock_company_id, tr.from_node_id, item.item_id, qty)
 
     tr.status     = "rejected"
     tr.updated_by = rejected_by
