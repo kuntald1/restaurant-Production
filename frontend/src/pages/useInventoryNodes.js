@@ -4,19 +4,9 @@
  *
  * LOGIC:
  *   Warehouses & Cloud Kitchens → inv_node table (node_type != 'branch')
- *   Branches                    → company table (parant_company_unique_id = cid)
- *                                 shown in parent→child tree order
- *
- * DROPDOWN FORMAT (nodes array):
- *   Each entry has:
- *     node_id       — number (inv_node.node_id or company.company_unique_id)
- *     node_name     — display name (indented for child branches)
- *     node_type     — 'warehouse' | 'cloud_kitchen' | 'branch'
- *     is_branch     — true if from company table
- *     depth         — 0=top, 1=child, 2=grandchild (for indent)
- *
- * USAGE in any page:
- *   const { nodes, loadingNodes, getNodeName, getNodeType } = useInventoryNodes(cid);
+ *   Branches                    → company table via /inventory/branches/{cid}
+ *                                 API returns: logged-in company + children + grandchildren
+ *                                 Frontend builds parent-child tree for dropdown display
  */
 
 import { useState, useEffect } from 'react';
@@ -37,7 +27,7 @@ export function useInventoryNodes(cid) {
       invNodeAPI.getBranches(cid),
     ]).then(([whResult, branchResult]) => {
 
-      // ── Warehouse & Cloud Kitchen from inv_node ──────────────
+      // Warehouse & Cloud Kitchen from inv_node
       const whAndCk = (whResult.status === 'fulfilled' ? whResult.value || [] : [])
         .filter(n => n.node_type !== 'branch')
         .map(n => ({
@@ -48,48 +38,98 @@ export function useInventoryNodes(cid) {
           depth:     0,
         }));
 
-      // ── Branches from company table (parent-child tree) ───────
-      const raw = branchResult.status === 'fulfilled' ? branchResult.value || [] : [];
+      // Branches from company table
+      const raw    = branchResult.status === 'fulfilled' ? branchResult.value || [] : [];
+      const cidNum = parseInt(cid);
 
-      // Direct children of logged-in company (depth=1)
-      const directChildren = raw.filter(b => b.parant_company_unique_id === cid);
-      // Grandchildren (depth=2)
+      // The logged-in company itself (parant = null or parant not in list)
+      const topLevel = raw.filter(b =>
+        b.company_unique_id === cidNum ||
+        b.parant_company_unique_id === null
+      );
+
+      // Direct children of cid
+      const directChildren = raw.filter(b =>
+        b.parant_company_unique_id === cidNum &&
+        b.company_unique_id !== cidNum
+      );
+
+      // Grandchildren
       const directChildIds = new Set(directChildren.map(b => b.company_unique_id));
       const grandChildren  = raw.filter(b => directChildIds.has(b.parant_company_unique_id));
 
-      // Build ordered flat list: each parent followed by its children
+      // Build ordered flat list
       const orderedBranches = [];
-      for (const parent of directChildren) {
+      const added = new Set();
+
+      for (const top of topLevel) {
+        if (added.has(top.company_unique_id)) continue;
         orderedBranches.push({
-          node_id:   parent.company_unique_id,
-          node_name: `${TYPE_ICON.branch} ${parent.name}`,
+          node_id:   top.company_unique_id,
+          node_name: `${TYPE_ICON.branch} ${top.name}`,
           node_type: 'branch',
           is_branch: true,
           depth:     1,
         });
-        const children = grandChildren.filter(g => g.parant_company_unique_id === parent.company_unique_id);
+        added.add(top.company_unique_id);
+
+        // Children of this top-level
+        const children = directChildren.filter(d =>
+          d.parant_company_unique_id === top.company_unique_id
+        );
         for (const child of children) {
+          if (added.has(child.company_unique_id)) continue;
           orderedBranches.push({
             node_id:   child.company_unique_id,
-            node_name: `\u3000\u21b3 ${child.name}`,  // indented with unicode
+            node_name: `\u3000\u21b3 ${child.name}`,
             node_type: 'branch',
             is_branch: true,
             depth:     2,
           });
+          added.add(child.company_unique_id);
+
+          // Grandchildren
+          const grandkids = grandChildren.filter(g =>
+            g.parant_company_unique_id === child.company_unique_id
+          );
+          for (const gk of grandkids) {
+            if (added.has(gk.company_unique_id)) continue;
+            orderedBranches.push({
+              node_id:   gk.company_unique_id,
+              node_name: `\u3000\u3000\u21b3 ${gk.name}`,
+              node_type: 'branch',
+              is_branch: true,
+              depth:     3,
+            });
+            added.add(gk.company_unique_id);
+          }
         }
+      }
+
+      // Add any remaining direct children not yet added
+      for (const child of directChildren) {
+        if (added.has(child.company_unique_id)) continue;
+        orderedBranches.push({
+          node_id:   child.company_unique_id,
+          node_name: `\u3000\u21b3 ${child.name}`,
+          node_type: 'branch',
+          is_branch: true,
+          depth:     2,
+        });
+        added.add(child.company_unique_id);
       }
 
       setNodes([...whAndCk, ...orderedBranches]);
     }).finally(() => setLoadingNodes(false));
   }, [cid]);
 
-  // Get clean display name (no icons/indent) for table cells
+  // Clean display name for table cells (no icons/indent)
   const getNodeName = (nodeId) => {
     const n = nodes.find(n => String(n.node_id) === String(nodeId));
     if (!n) return '—';
     return n.node_name
       .replace(/^[🏭☁️🏪📍]\s*/, '')
-      .replace(/^\u3000\u21b3\s*/, '');
+      .replace(/^\u3000+\u21b3\s*/, '');
   };
 
   const getNodeType = (nodeId) => {
