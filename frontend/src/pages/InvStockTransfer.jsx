@@ -104,17 +104,26 @@ export default function InvStockTransfer() {
 
   const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }));
 
-  // Get icon for a node by its id
-  const getNodeIcon = (nodeId) => {
-    const n = nodes.find(n => String(n.node_id) === String(nodeId));
-    return TYPE_ICON[n?.node_type] || '📍';
+  // Plain text label for <option> tags (no emoji - browsers render them as boxes)
+  const getNodeLabel = (n) => {
+    const typeLabel = { warehouse: '[WH]', cloud_kitchen: '[CK]', branch: '[BR]' };
+    const prefix = typeLabel[n.node_type] || '';
+    const cleanName = n.node_name
+      .replace(/^[^\w\s　↳]+\s*/, '')  // strip leading emoji
+      .replace(/^　+↳\s*/, '↳ ');   // keep indent arrow
+    return `${prefix} ${cleanName}`;
   };
 
-  // Get full display name with icon for table cells
+  // Get display name for table cells - getNodeName already strips icons
+  // node_name from hook has icon prefix e.g. "🏭 Main Warehouse"
+  // getNodeName strips the icon for clean display
+  // For table we want icon + clean name
   const getNodeDisplay = (nodeId) => {
-    const name = getNodeName(nodeId);
-    const icon = getNodeIcon(nodeId);
-    return name === '—' ? '—' : `${icon} ${name}`;
+    const n = nodes.find(nd => String(nd.node_id) === String(nodeId));
+    if (!n) return '—';
+    // node_name already includes icon from useInventoryNodes hook
+    // Strip indent prefix only (for child branches), keep the icon
+    return n.node_name.replace(/^　+↳\s*/, '↳ ');
   };
 
   const getItemName = (id) => items.find(i => i.item_id === id)?.item_name || `Item #${id}`;
@@ -283,7 +292,7 @@ export default function InvStockTransfer() {
                   <option value="">— Select Source —</option>
                   {nodes.map(n => (
                     <option key={n.node_id} value={n.node_id}>
-                      {n.node_name}
+                      {getNodeLabel(n)}
                     </option>
                   ))}
                 </Select>
@@ -297,7 +306,7 @@ export default function InvStockTransfer() {
                     .filter(n => String(n.node_id) !== String(form.from_node_id))
                     .map(n => (
                       <option key={n.node_id} value={n.node_id}>
-                        {n.node_name}
+                        {getNodeLabel(n)}
                       </option>
                     ))
                   }
