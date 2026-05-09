@@ -437,11 +437,12 @@ export default function InvStockTransfer() {
         {/* Incoming summary */}
         <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '14px 16px' }}>
           <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-3)', marginBottom: 10, textTransform: 'uppercase', letterSpacing: 1 }}>📥 Incoming (Receiver)</div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
             {[
-              { label: 'Pending',   count: incoming.filter(t => t.status === 'dispatched').length, color: 'var(--error)',   emoji: '⏳' },
-              { label: 'Received',  count: incoming.filter(t => t.status === 'received').length,   color: 'var(--success)', emoji: '✅' },
-              { label: 'Rejected',  count: incoming.filter(t => t.status === 'rejected').length,   color: 'var(--error)',   emoji: '❌' },
+              { label: 'In Transit', count: incoming.filter(t => t.status === 'dispatched').length, color: 'var(--warning)', emoji: '🚚' },
+              { label: 'Action Req', count: incoming.filter(t => t.status === 'dispatched').length, color: 'var(--error)',   emoji: '⚠️' },
+              { label: 'Received',   count: incoming.filter(t => t.status === 'received').length,   color: 'var(--success)', emoji: '✅' },
+              { label: 'Rejected',   count: incoming.filter(t => t.status === 'rejected').length,   color: 'var(--error)',   emoji: '❌' },
             ].map(({ label, count, color, emoji }) => (
               <div key={label} style={{ textAlign: 'center', padding: '8px 4px' }}>
                 <div style={{ fontSize: 22, marginBottom: 2 }}>{emoji}</div>
