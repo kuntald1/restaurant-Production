@@ -177,11 +177,24 @@ export default function InvStockTransfer() {
     setLines([]); setEditId(null); setStockBalance([]); setModal('form');
   };
 
+  // Convert a raw integer node_id from DB back to the correct form value
+  // WH/CK nodes stay as integer string "1","2"
+  // Branch nodes become "b_1","b_2","b_3"
+  const toFormNodeId = (rawId) => {
+    if (!rawId) return '';
+    const n = nodes.find(nd => {
+      const nid = String(nd.node_id);
+      const num = nid.startsWith('b_') ? nid.slice(2) : nid;
+      return num === String(rawId);
+    });
+    return n ? String(n.node_id) : String(rawId);
+  };
+
   const openEdit = (row) => {
     setForm({
       transfer_number: row.transfer_number,
-      from_node_id:    String(row.from_node_id || ''),
-      to_node_id:      String(row.to_node_id   || ''),
+      from_node_id:    toFormNodeId(row.from_node_id),
+      to_node_id:      toFormNodeId(row.to_node_id),
       transfer_date:   row.transfer_date,
       status:          row.status,
       notes:           row.notes || '',
