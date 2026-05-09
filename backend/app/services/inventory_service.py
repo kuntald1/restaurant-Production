@@ -804,6 +804,7 @@ def report_stock_movement(db: Session, company_id: int, node_id: int = None, ite
 def dispatch_transfer(db: Session, transfer_id: int, dispatched_by: str = None):
     """
     Sender clicks Dispatch:
+    - Validates available stock before deducting
     - Deducts stock from from_node
     - Status → dispatched (in transit)
     - Does NOT add to to_node yet
@@ -815,6 +816,26 @@ def dispatch_transfer(db: Session, transfer_id: int, dispatched_by: str = None):
         raise HTTPException(status_code=400, detail=f"Cannot dispatch transfer in status: {tr.status}")
     if not tr.from_node_id or not tr.to_node_id:
         raise HTTPException(status_code=400, detail="Transfer must have both from and to nodes")
+
+    # ── Validate stock availability before deducting ──────────
+    for item in tr.items:
+        if item.item_id:
+            qty = item.requested_qty
+            balance = db.query(StockBalance).filter(
+                StockBalance.company_unique_id == tr.company_unique_id,
+                StockBalance.node_id           == tr.from_node_id,
+                StockBalance.item_id           == item.item_id,
+            ).first()
+            available = balance.qty_on_hand if balance else Decimal("0")
+            if qty > available:
+                # Get item name for error message
+                from app.models.inventory_models import InventoryItem
+                inv_item = db.query(InventoryItem).filter(InventoryItem.item_id == item.item_id).first()
+                item_name = inv_item.item_name if inv_item else f"Item #{item.item_id}"
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Insufficient stock for '{item_name}': requested {qty}, available {available}"
+                )
 
     # Deduct from sender ONLY — receiver gets stock only when they accept
     for item in tr.items:

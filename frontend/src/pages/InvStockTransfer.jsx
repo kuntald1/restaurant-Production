@@ -245,7 +245,20 @@ export default function InvStockTransfer() {
     const myNode = nodes.find(n => String(n.node_id) === `b_${cid}` || n.node_id === cid);
     const defaultFrom = myNode ? String(myNode.node_id) : '';
     setForm({ ...EMPTY, transfer_number: `TR-${Date.now().toString().slice(-6)}`, from_node_id: defaultFrom });
-    setLines([]); setEditId(null); setStockBalance([]); setModal('form');
+    setLines([]); setEditId(null); setStockBalance([]);
+    // Force reload stock balance for pre-selected from node
+    if (defaultFrom) {
+      const fromInt = nodeIdToInt(defaultFrom);
+      const allCo   = allCompanies || [];
+      const myCo    = allCo.find(c => Number(c.company_unique_id) === Number(cid));
+      const stockCid = myCo?.parant_company_unique_id || cid;
+      if (fromInt) {
+        invStockAPI.getBalance(stockCid, fromInt)
+          .then(rows => setStockBalance(rows || []))
+          .catch(() => setStockBalance([]));
+      }
+    }
+    setModal('form');
   };
 
   const openEdit = (row) => {
