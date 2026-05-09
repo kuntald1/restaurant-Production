@@ -383,19 +383,45 @@ export default function InvStockTransfer() {
       />
 
       {/* Summary cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 20 }}>
-        {[
-          { label: 'Draft',       count: outgoing.filter(t => t.status === 'draft').length,                    color: '#6b8f6b',        emoji: '📝' },
-          { label: 'In Transit',  count: outgoing.filter(t => t.status === 'dispatched').length,                color: 'var(--warning)', emoji: '🚚' },
-          { label: 'Received',    count: incoming.filter(t => t.status === 'received').length,                  color: 'var(--success)', emoji: '✅' },
-          { label: 'Need Action', count: incoming.filter(t => t.status === 'dispatched').length,                color: 'var(--error)',   emoji: '📥' },
-        ].map(({ label, count, color, emoji }) => (
-          <div key={label} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '16px', textAlign: 'center' }}>
-            <div style={{ fontSize: 28, marginBottom: 4 }}>{emoji}</div>
-            <div style={{ fontSize: 24, fontWeight: 700, color }}>{count}</div>
-            <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 2 }}>{label}</div>
+      {/* Summary — 2 sections: Outgoing (sender view) + Incoming (receiver view) */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 20 }}>
+
+        {/* Outgoing summary */}
+        <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '14px 16px' }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-3)', marginBottom: 10, textTransform: 'uppercase', letterSpacing: 1 }}>📤 Outgoing (Sender)</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+            {[
+              { label: 'Draft',      count: outgoing.filter(t => t.status === 'draft').length,      color: '#6b8f6b',        emoji: '📝' },
+              { label: 'In Transit', count: outgoing.filter(t => t.status === 'dispatched').length,  color: 'var(--warning)', emoji: '🚚' },
+              { label: 'Completed',  count: outgoing.filter(t => t.status === 'received').length,    color: 'var(--success)', emoji: '✅' },
+            ].map(({ label, count, color, emoji }) => (
+              <div key={label} style={{ textAlign: 'center', padding: '8px 4px' }}>
+                <div style={{ fontSize: 22, marginBottom: 2 }}>{emoji}</div>
+                <div style={{ fontSize: 20, fontWeight: 700, color }}>{count}</div>
+                <div style={{ fontSize: 10, color: 'var(--text-3)' }}>{label}</div>
+              </div>
+            ))}
           </div>
-        ))}
+        </div>
+
+        {/* Incoming summary */}
+        <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '14px 16px' }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-3)', marginBottom: 10, textTransform: 'uppercase', letterSpacing: 1 }}>📥 Incoming (Receiver)</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+            {[
+              { label: 'Pending',   count: incoming.filter(t => t.status === 'dispatched').length, color: 'var(--error)',   emoji: '⏳' },
+              { label: 'Received',  count: incoming.filter(t => t.status === 'received').length,   color: 'var(--success)', emoji: '✅' },
+              { label: 'Rejected',  count: incoming.filter(t => t.status === 'rejected').length,   color: 'var(--error)',   emoji: '❌' },
+            ].map(({ label, count, color, emoji }) => (
+              <div key={label} style={{ textAlign: 'center', padding: '8px 4px' }}>
+                <div style={{ fontSize: 22, marginBottom: 2 }}>{emoji}</div>
+                <div style={{ fontSize: 20, fontWeight: 700, color }}>{count}</div>
+                <div style={{ fontSize: 10, color: 'var(--text-3)' }}>{label}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
       </div>
 
       {/* Tabs */}
