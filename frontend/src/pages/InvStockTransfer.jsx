@@ -131,6 +131,7 @@ export default function InvStockTransfer() {
   const [editId,   setEditId]   = useState(null);
   const [confirm,  setConfirm]  = useState(null);
   const [saving,   setSaving]   = useState(false);
+  const [pendingEdit, setPendingEdit] = useState(null);
 
   // Stock balance for selected From Node
   const [stockBalance,     setStockBalance]     = useState([]);
