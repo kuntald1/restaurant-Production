@@ -22,7 +22,7 @@ export function nodeIdToInt(nodeId) {
   return s.startsWith('b_') ? parseInt(s.slice(2)) : parseInt(s);
 }
 
-export function useInventoryNodes(cid) {
+export function useInventoryNodes(cid, selectedCompany) {
   const [nodes,        setNodes]        = useState([]);
   const [loadingNodes, setLoadingNodes] = useState(false);
 
@@ -55,20 +55,20 @@ export function useInventoryNodes(cid) {
       const orderedBranches = [];
       const added = new Set();
 
-      // Self (logged-in company) — depth 1
+      // Self (logged-in company) — always add even if not in raw list
+      // (When cid=3 has no children, getBranches(3) returns empty — still need self)
       const selfCompany = raw.find(b => Number(b.company_unique_id) === cidNum);
-      if (selfCompany) {
-        orderedBranches.push({
-          node_id:    `b_${selfCompany.company_unique_id}`,  // "b_1"
-          node_name:  selfCompany.name,
-          node_icon:  TYPE_ICON.branch,
-          node_label: `${TYPE_ICON.branch} ${selfCompany.name}`,
-          node_type:  'branch',
-          is_branch:  true,
-          depth:      1,
-        });
-        added.add(selfCompany.company_unique_id);
-      }
+      const selfName    = selfCompany?.name || selectedCompany?.name || `Company #${cid}`;
+      orderedBranches.push({
+        node_id:    `b_${cidNum}`,
+        node_name:  selfName,
+        node_icon:  TYPE_ICON.branch,
+        node_label: `${TYPE_ICON.branch} ${selfName}`,
+        node_type:  'branch',
+        is_branch:  true,
+        depth:      1,
+      });
+      added.add(cidNum);
 
       // Direct children — depth 2
       const directChildren = raw.filter(b =>
@@ -116,7 +116,7 @@ export function useInventoryNodes(cid) {
   const findNode = (nodeId) => {
     if (nodeId === null || nodeId === undefined || nodeId === '') return null;
     const s = String(nodeId);
-    // Try exact match first ("b_3" === "b_3")
+    // Try exact match first
     let n = nodes.find(n => String(n.node_id) === s);
     if (n) return n;
     // Try matching integer value (DB stores 3, node has "b_3")
@@ -130,11 +130,18 @@ export function useInventoryNodes(cid) {
   };
 
   // Display with icon for table cells
-  const getNodeDisplay = (nodeId) => {
+  // allNodeNames: pass a global lookup map if available
+  const getNodeDisplay = (nodeId, globalLookup) => {
     const n = findNode(nodeId);
-    if (!n) return '—';
-    const indent = n.depth === 2 ? '↳ ' : n.depth === 3 ? '　↳ ' : '';
-    return `${n.node_icon} ${indent}${n.node_name}`;
+    if (n) {
+      const indent = n.depth === 2 ? '↳ ' : n.depth === 3 ? '　↳ ' : '';
+      return `${n.node_icon} ${indent}${n.node_name}`;
+    }
+    // Fallback: check globalLookup (cross-company nodes)
+    if (globalLookup && globalLookup[String(nodeId)]) {
+      return globalLookup[String(nodeId)];
+    }
+    return nodeId ? `Node #${nodeId}` : '—';
   };
 
   const getNodeName = (nodeId) => {

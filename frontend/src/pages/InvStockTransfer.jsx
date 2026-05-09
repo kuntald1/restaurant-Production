@@ -158,7 +158,7 @@ export default function InvStockTransfer() {
   const [saving,      setSaving]      = useState(false);
   const [stockBalance,setStockBalance]= useState([]);
 
-  const { nodes, getNodeDisplay: _getNodeDisplay } = useInventoryNodes(cid);
+  const { nodes, getNodeDisplay: _getNodeDisplay } = useInventoryNodes(cid, selectedCompany);
 
   // Use global lookup for cross-company display (e.g. Alok seeing Main Warehouse)
   const getNodeDisplay = (nodeId) => {
@@ -231,7 +231,10 @@ export default function InvStockTransfer() {
   };
 
   const openCreate = () => {
-    setForm({ ...EMPTY, transfer_number: `TR-${Date.now().toString().slice(-6)}` });
+    // Auto-select logged-in user's company as From Node
+    const myNode = nodes.find(n => String(n.node_id) === `b_${cid}` || n.node_id === cid);
+    const defaultFrom = myNode ? String(myNode.node_id) : '';
+    setForm({ ...EMPTY, transfer_number: `TR-${Date.now().toString().slice(-6)}`, from_node_id: defaultFrom });
     setLines([]); setEditId(null); setStockBalance([]); setModal('form');
   };
 

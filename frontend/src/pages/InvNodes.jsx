@@ -37,7 +37,7 @@ export default function InvNodes() {
   const [tab,          setTab]          = useState('wh'); // 'wh' | 'branches'
 
   // All nodes including branches from company table
-  const { nodes: allNodes, loadingNodes } = useInventoryNodes(cid);
+  const { nodes: allNodes, loadingNodes } = useInventoryNodes(cid, selectedCompany);
 
   // Branches (read-only) from company table
   const branchNodes = allNodes.filter(n => n.is_branch);
