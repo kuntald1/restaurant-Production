@@ -494,9 +494,34 @@ def approve_transfer(db: Session, transfer_id: int, approved_by: str = None):
 def update_transfer(db: Session, transfer_id: int, data: StockTransferUpdate):
     tr = db.query(StockTransfer).filter(StockTransfer.transfer_id == transfer_id).first()
     if not tr: return None
-    for k, v in data.model_dump(exclude_unset=True).items():
+
+    # Update header fields
+    update_data = data.model_dump(exclude_unset=True)
+    items_data  = update_data.pop('items', None)  # extract items separately
+    for k, v in update_data.items():
         setattr(tr, k, v)
     tr.updated_at = datetime.utcnow()
+
+    # Update line items if provided
+    if items_data is not None:
+        # Soft-delete existing items
+        existing = db.query(StockTransferItem).filter(
+            StockTransferItem.transfer_id == transfer_id,
+            StockTransferItem.is_active   == True,
+        ).all()
+        for item in existing:
+            item.is_active = False
+
+        # Insert new items
+        for it in items_data:
+            new_item = StockTransferItem(
+                company_unique_id = tr.company_unique_id,
+                transfer_id       = transfer_id,
+                item_id           = it.get('item_id'),
+                requested_qty     = it.get('requested_qty'),
+            )
+            db.add(new_item)
+
     db.commit()
     return _transfer_with_items(db, transfer_id)
 

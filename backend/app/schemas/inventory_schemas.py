@@ -416,11 +416,16 @@ class StockTransferCreate(BaseModel):
 
 
 class StockTransferUpdate(BaseModel):
-    status: Optional[str] = None
-    notes: Optional[str] = None
-    approved_by: Optional[str] = None
-    is_active: Optional[bool] = None
-    updated_by: Optional[str] = None
+    transfer_number: Optional[str] = None
+    from_node_id:    Optional[int] = None
+    to_node_id:      Optional[int] = None
+    transfer_date:   Optional[date] = None
+    status:          Optional[str] = None
+    notes:           Optional[str] = None
+    approved_by:     Optional[str] = None
+    is_active:       Optional[bool] = None
+    updated_by:      Optional[str] = None
+    items:           Optional[List[TransferItemCreate]] = None
 
 
 class StockTransferResponse(OrmBase):
