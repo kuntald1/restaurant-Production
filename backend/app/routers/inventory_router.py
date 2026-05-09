@@ -501,8 +501,7 @@ def get_branch_companies(company_id: int, db: Session = Depends(get_db)):
             FROM company c
             WHERE c.is_active = true
               AND (
-                c.company_unique_id = :cid
-                OR c.parant_company_unique_id = :cid
+                c.parant_company_unique_id = :cid
                 OR c.parant_company_unique_id IN (
                     SELECT company_unique_id FROM company
                     WHERE parant_company_unique_id = :cid
@@ -573,3 +572,28 @@ def get_all_transfers_admin(
 ):
     """Admin view — all transfers for company regardless of node."""
     return svc.get_all_transfers_admin(db, company_id)
+
+
+# ── All nodes for cross-company display (used by receiver to see sender node name) ──
+@router.get("/nodes/all/{company_id}")
+def get_all_nodes_for_display(company_id: int, db: Session = Depends(get_db)):
+    """
+    Returns all inv_node records + branch companies visible to this company.
+    Used by receivers to display FROM node names in incoming transfers.
+    """
+    from sqlalchemy import text
+    # Get all inv_node records (any company)
+    inv_nodes = db.execute(
+        text("SELECT node_id, node_name, node_type FROM inv_node WHERE is_active = true")
+    ).fetchall()
+    # Get all company names (for branch node display)
+    companies = db.execute(
+        text("SELECT company_unique_id, name FROM company WHERE is_active = true")
+    ).fetchall()
+    result = {}
+    for r in inv_nodes:
+        type_icon = {"warehouse": "🏭", "cloud_kitchen": "☁️", "branch": "🏪"}.get(r[2], "📍")
+        result[str(r[0])] = f"{type_icon} {r[1]}"
+    for r in companies:
+        result[str(r[0])] = f"🏪 {r[1]}"
+    return result

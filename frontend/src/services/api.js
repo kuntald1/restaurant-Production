@@ -253,12 +253,11 @@ export const invItemAPI = {
 
 // ── Inventory: Node (Warehouse / CK / Branch) ─────────────────
 export const invNodeAPI = {
-  getAll:      (companyId) => request('GET', `/inventory/node/list/${companyId}`),
-  getById:     (id)        => request('GET', `/inventory/node/${id}`),
-  create:      (data)      => request('POST', '/inventory/node', data),
-  update:      (id, data)  => request('PUT', `/inventory/node/${id}`, data),
-  delete:      (id)        => request('DELETE', `/inventory/node/${id}`),
-  getBranches: (companyId) => request('GET', `/inventory/branches/${companyId}`),
+  getAll:  (companyId) => request('GET', `/inventory/node/list/${companyId}`),
+  getById: (id)        => request('GET', `/inventory/node/${id}`),
+  create:  (data)      => request('POST', '/inventory/node', data),
+  update:  (id, data)  => request('PUT', `/inventory/node/${id}`, data),
+  delete:  (id)        => request('DELETE', `/inventory/node/${id}`),
 };
 
 // ── Inventory: Stock Balance ───────────────────────────────────
@@ -306,6 +305,7 @@ export const invTransferAPI = {
   getById:      (id)           => request('GET', `/inventory/transfer/${id}`),
   getIncoming:  (toNodeId, companyId) => request('GET', `/inventory/transfer/incoming/${toNodeId}?company_id=${companyId}`),
   getAllAdmin:   (companyId)   => request('GET', `/inventory/transfer/all/${companyId}`),
+  getNodeLookup: (companyId)  => request('GET', `/inventory/nodes/all/${companyId}`),
   create:       (data)        => request('POST', '/inventory/transfer', data),
   update:       (id, data)    => request('PUT', `/inventory/transfer/${id}`, data),
   dispatch:     (id, by)      => request('POST', `/inventory/transfer/${id}/dispatch${by ? `?dispatched_by=${by}` : ''}`),
