@@ -116,7 +116,7 @@ class StockBalance(Base):
 
     balance_id        = Column(BigInteger, Identity(), primary_key=True)
     company_unique_id = Column(BigInteger, nullable=False)
-    node_id           = Column(BigInteger, ForeignKey("inv_node.node_id", ondelete="CASCADE"), nullable=False)
+    node_id           = Column(BigInteger, nullable=False)  # no FK — supports branch company IDs
     item_id           = Column(BigInteger, ForeignKey("inv_item.item_id", ondelete="CASCADE"), nullable=False)
     qty_on_hand       = Column(Numeric(14, 3), default=0, nullable=False)
     last_updated      = Column(DateTime, server_default=func.now(), onupdate=func.now())
@@ -266,8 +266,8 @@ class StockTransfer(Base):
     transfer_id       = Column(BigInteger, Identity(), primary_key=True)
     company_unique_id = Column(BigInteger, nullable=False)
     transfer_number   = Column(String(50), nullable=False)
-    from_node_id      = Column(BigInteger, ForeignKey("inv_node.node_id", ondelete="SET NULL"), nullable=True)
-    to_node_id        = Column(BigInteger, ForeignKey("inv_node.node_id", ondelete="SET NULL"), nullable=True)
+    from_node_id      = Column(BigInteger, nullable=True)   # no FK — supports branch company IDs
+    to_node_id        = Column(BigInteger, nullable=True)   # no FK — supports branch company IDs
     transfer_date     = Column(Date, nullable=False)
     status            = Column(String(30), default="draft", nullable=False)
     # draft | pending_approval | approved | rejected | dispatched | received
