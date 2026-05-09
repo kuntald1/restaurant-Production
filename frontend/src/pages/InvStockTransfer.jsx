@@ -385,10 +385,10 @@ export default function InvStockTransfer() {
       {/* Summary cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 20 }}>
         {[
-          { label: 'Draft',       count: outgoing.filter(t => t.status === 'draft').length,      color: '#6b8f6b',        emoji: '📝' },
-          { label: 'In Transit',  count: outgoing.filter(t => t.status === 'dispatched').length,  color: 'var(--warning)', emoji: '🚚' },
-          { label: 'Received',    count: outgoing.filter(t => t.status === 'received').length,    color: 'var(--success)', emoji: '✅' },
-          { label: 'Need Action', count: pendingReceive,                                           color: 'var(--error)',   emoji: '📥' },
+          { label: 'Draft',       count: outgoing.filter(t => t.status === 'draft').length,                    color: '#6b8f6b',        emoji: '📝' },
+          { label: 'In Transit',  count: outgoing.filter(t => t.status === 'dispatched').length,                color: 'var(--warning)', emoji: '🚚' },
+          { label: 'Received',    count: incoming.filter(t => t.status === 'received').length,                  color: 'var(--success)', emoji: '✅' },
+          { label: 'Need Action', count: incoming.filter(t => t.status === 'dispatched').length,                color: 'var(--error)',   emoji: '📥' },
         ].map(({ label, count, color, emoji }) => (
           <div key={label} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '16px', textAlign: 'center' }}>
             <div style={{ fontSize: 28, marginBottom: 4 }}>{emoji}</div>
