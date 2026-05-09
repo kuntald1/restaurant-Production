@@ -38,7 +38,7 @@ import Subscriptions from './pages/Subscriptions';
 import InvItemMaster       from './pages/InvItemMaster';
 import InvSuppliers        from './pages/InvSuppliers';
 import InvPurchase         from './pages/InvPurchase';
-import InvTransfer         from './pages/InvTransfer';
+import InvTransfer         from './pages/InvStockTransfer';
 import InvConsumptionWaste from './pages/InvConsumptionWaste';
 import InvStockAudit       from './pages/InvStockAudit';
 import InvReports          from './pages/InvReports';
