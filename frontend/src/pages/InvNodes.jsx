@@ -12,11 +12,11 @@ import { useInventoryNodes } from './useInventoryNodes';
 import { Table, Modal, Badge, Spinner, PageHeader, FormField, Input, Select, Textarea, ConfirmDialog } from '../components/UI';
 import { useApp } from '../context/useApp';
 
-const WH_CK_TYPES = ['warehouse', 'cloud_kitchen'];
+const ALL_TYPES   = ['warehouse', 'cloud_kitchen', 'branch'];
 const TYPE_ICON   = { warehouse: '🏭', cloud_kitchen: '☁️', branch: '🏪' };
 const TYPE_COLOR  = { warehouse: 'info', cloud_kitchen: 'warning', branch: 'success' };
 
-const EMPTY = { node_name: '', node_type: 'warehouse', address: '', is_active: true };
+const EMPTY = { node_name: '', node_type: 'warehouse', address: '', is_active: true, selected_branch_company_id: '' };
 
 export default function InvNodes() {
   const { selectedCompany, showToast, user } = useApp();
@@ -77,9 +77,12 @@ export default function InvNodes() {
     e.preventDefault(); setSaving(true);
     try {
       const payload = {
-        ...form,
         company_unique_id: cid,
-        created_by: user?.username,
+        node_name:         form.node_name,
+        node_type:         form.node_type,
+        address:           form.address || '',
+        is_active:         form.is_active,
+        created_by:        user?.username,
       };
       if (editId) {
         await invNodeAPI.update(editId, { ...payload, updated_by: user?.username });
@@ -214,21 +217,22 @@ export default function InvNodes() {
         )
       )}
 
-      {/* ── Add/Edit Node Modal (WH/CK only) ── */}
+      {/* ── Add/Edit Node Modal ── */}
       {modal === 'form' && (
         <Modal title={editId ? 'Edit Node' : 'Add Node'} onClose={() => setModal(null)} size="md">
           <form onSubmit={handleSubmit}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-              <FormField label="Node Name" required>
-                <Input value={form.node_name} onChange={set('node_name')} required placeholder="e.g. Main Warehouse" />
-              </FormField>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+
+              {/* Type selector — always shown */}
               <FormField label="Type" required>
-                <Select value={form.node_type} onChange={set('node_type')}>
-                  {WH_CK_TYPES.map(t => (
+                <Select value={form.node_type} onChange={(e) => setForm(f => ({ ...f, node_type: e.target.value, node_name: '', selected_branch_company_id: '' }))}>
+                  {ALL_TYPES.map(t => (
                     <option key={t} value={t}>{TYPE_ICON[t]} {t.replace('_', ' ')}</option>
                   ))}
                 </Select>
               </FormField>
+
+              {/* Status */}
               <FormField label="Status">
                 <Select value={form.is_active ? 'true' : 'false'} onChange={(e) => setForm(f => ({ ...f, is_active: e.target.value === 'true' }))}>
                   <option value="true">Active</option>
@@ -236,9 +240,49 @@ export default function InvNodes() {
                 </Select>
               </FormField>
             </div>
-            <FormField label="Address">
-              <Textarea value={form.address} onChange={set('address')} rows={2} placeholder="Physical address" />
-            </FormField>
+
+            {/* Branch type → show company dropdown instead of text input */}
+            {form.node_type === 'branch' ? (
+              <FormField label="Select Branch (from Company)" required>
+                <Select
+                  value={form.selected_branch_company_id}
+                  onChange={(e) => {
+                    const selected = branchNodes.find(n => String(n.node_id) === e.target.value);
+                    setForm(f => ({
+                      ...f,
+                      selected_branch_company_id: e.target.value,
+                      node_name: selected ? selected.node_name.replace(/^[🏭☁️🏪📍　↳]\s*/g, '').trim() : '',
+                    }));
+                  }}
+                  required
+                >
+                  <option value="">— Select Branch —</option>
+                  {branchNodes.map(n => (
+                    <option key={n.node_id} value={n.node_id}>{n.node_name}</option>
+                  ))}
+                </Select>
+                <p style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 4 }}>
+                  Branches are loaded from your Company Management setup.
+                </p>
+              </FormField>
+            ) : (
+              /* WH / CK → show text input */
+              <FormField label="Node Name" required>
+                <Input
+                  value={form.node_name}
+                  onChange={set('node_name')}
+                  required
+                  placeholder={form.node_type === 'warehouse' ? 'e.g. Main Warehouse' : 'e.g. Central Cloud Kitchen'}
+                />
+              </FormField>
+            )}
+
+            {form.node_type !== 'branch' && (
+              <FormField label="Address">
+                <Textarea value={form.address} onChange={set('address')} rows={2} placeholder="Physical address" />
+              </FormField>
+            )}
+
             <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 16 }}>
               <button type="button" className="btn btn-ghost" onClick={() => setModal(null)}>Cancel</button>
               <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Saving…' : editId ? 'Update' : 'Create'}</button>
