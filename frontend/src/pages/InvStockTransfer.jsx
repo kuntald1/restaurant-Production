@@ -158,6 +158,25 @@ export default function InvStockTransfer() {
 
   useEffect(() => { load(); }, [cid]);
 
+  // When nodes load, resolve any pending edit (nodes needed for toFormNodeId)
+  useEffect(() => {
+    if (pendingEdit && nodes.length > 0) {
+      const row = pendingEdit;
+      setForm({
+        transfer_number: row.transfer_number,
+        from_node_id:    toFormNodeId(row.from_node_id),
+        to_node_id:      toFormNodeId(row.to_node_id),
+        transfer_date:   row.transfer_date,
+        status:          row.status,
+        notes:           row.notes || '',
+      });
+      setLines((row.items || []).map(i => ({ item_id: String(i.item_id || ''), qty: i.requested_qty })));
+      setEditId(row.transfer_id);
+      setModal('form');
+      setPendingEdit(null);
+    }
+  }, [nodes, pendingEdit]);
+
   // Load stock balance when From Node changes
   useEffect(() => {
     const fromNodeInt = nodeIdToInt(form.from_node_id);
@@ -191,6 +210,12 @@ export default function InvStockTransfer() {
   };
 
   const openEdit = (row) => {
+    if (nodes.length === 0) {
+      // Nodes not loaded yet — store row and wait
+      setPendingEdit(row);
+      setModal('form'); // open modal with loading state
+      return;
+    }
     setForm({
       transfer_number: row.transfer_number,
       from_node_id:    toFormNodeId(row.from_node_id),
