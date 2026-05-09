@@ -19,7 +19,7 @@
 
 import { useEffect, useState } from 'react';
 import { invTransferAPI, invItemAPI } from '../services/api';
-import { useInventoryNodes } from './useInventoryNodes';
+import { useInventoryNodes, nodeIdToInt } from './useInventoryNodes';
 import { Table, Modal, Badge, Spinner, PageHeader, FormField, Input, Select, Textarea, ConfirmDialog } from '../components/UI';
 import { useApp } from '../context/useApp';
 
@@ -156,8 +156,8 @@ export default function InvStockTransfer() {
       const payload = {
         company_unique_id: cid,
         transfer_number:   form.transfer_number,
-        from_node_id:      parseInt(form.from_node_id),
-        to_node_id:        parseInt(form.to_node_id),
+        from_node_id:      nodeIdToInt(form.from_node_id),
+        to_node_id:        nodeIdToInt(form.to_node_id),
         transfer_date:     form.transfer_date,
         status:            'draft',
         notes:             form.notes,

@@ -8,12 +8,11 @@
 
 import { useEffect, useState } from 'react';
 import { invNodeAPI, invStockAPI, invItemAPI } from '../services/api';
-import { useInventoryNodes } from './useInventoryNodes';
+import { useInventoryNodes, nodeIdToInt } from './useInventoryNodes';
 import { Table, Modal, Badge, Spinner, PageHeader, FormField, Input, Select, Textarea, ConfirmDialog } from '../components/UI';
 import { useApp } from '../context/useApp';
 
-//const ALL_TYPES   = ['warehouse', 'cloud_kitchen', 'branch'];
-const ALL_TYPES = ['warehouse', 'cloud_kitchen'];
+const ALL_TYPES   = ['warehouse', 'cloud_kitchen'];
 const TYPE_ICON   = { warehouse: '🏭', cloud_kitchen: '☁️', branch: '🏪' };
 const TYPE_COLOR  = { warehouse: 'info', cloud_kitchen: 'warning', branch: 'success' };
 
@@ -68,7 +67,7 @@ export default function InvNodes() {
   const openStock = async (node) => {
     setStockNode(node); setModal('stock'); setLoadingStock(true);
     try {
-      const rows = await invStockAPI.getBalance(cid, node.node_id);
+      const rows = await invStockAPI.getBalance(cid, nodeIdToInt(node.node_id));
       setStockRows(rows || []);
     } catch { setStockRows([]); }
     setLoadingStock(false);
