@@ -282,7 +282,7 @@ export default function InvStockTransfer() {
   };
 
   const handleDispatch = async (tr) => {
-    if (!window.confirm(`Dispatch ${tr.transfer_number}?\nStock will be deducted from ${getNodeDisplay(tr.from_node_id)} immediately.`)) return;
+    if (!window.confirm(`Dispatch Transfer ${tr.transfer_number}?\n\nFrom: ${getNodeDisplay(tr.from_node_id)}\nTo: ${getNodeDisplay(tr.to_node_id)}\n\nStock will be deducted from sender immediately.\nReceiver must Accept to complete the transfer.`)) return;
     try {
       await invTransferAPI.dispatch(tr.transfer_id, user?.username);
       showToast('Dispatched! Stock deducted. Waiting for receiver. 🚚');
@@ -291,7 +291,7 @@ export default function InvStockTransfer() {
   };
 
   const handleReceive = async (tr) => {
-    if (!window.confirm(`Accept transfer ${tr.transfer_number}?\nStock will be added to your location.`)) return;
+    if (!window.confirm(`Accept Transfer ${tr.transfer_number}?\n\nFrom: ${getNodeDisplay(tr.from_node_id)}\nTo: ${getNodeDisplay(tr.to_node_id)}\n\nStock will be added to your location.`)) return;
     try {
       await invTransferAPI.receive(tr.transfer_id, user?.username);
       showToast('Transfer accepted! Stock added. ✅');
@@ -300,7 +300,7 @@ export default function InvStockTransfer() {
   };
 
   const handleReject = async (tr) => {
-    if (!window.confirm(`Reject transfer ${tr.transfer_number}?\nStock will be returned to sender.`)) return;
+    if (!window.confirm(`Reject Transfer ${tr.transfer_number}?\n\nStock will be returned to ${getNodeDisplay(tr.from_node_id)}.`)) return;
     try {
       await invTransferAPI.reject(tr.transfer_id, user?.username);
       showToast('Transfer rejected. Stock returned. ❌');
@@ -524,11 +524,22 @@ export default function InvStockTransfer() {
           {viewTr.notes && <p style={{ marginTop: 12, color: 'var(--text-3)', fontSize: 12, fontStyle: 'italic' }}>📝 {viewTr.notes}</p>}
 
           <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 16 }}>
-            {viewTr.status === 'draft'      && <button className="btn btn-primary" onClick={() => handleDispatch(viewTr)}>🚚 Dispatch</button>}
-            {viewTr.status === 'dispatched' && <>
-              <button className="btn btn-primary" onClick={() => handleReceive(viewTr)}>✅ Accept</button>
-              <button className="btn btn-danger"  onClick={() => handleReject(viewTr)}>❌ Reject</button>
-            </>}
+            {viewTr.status === 'draft' && (
+              <button className="btn btn-primary" onClick={() => { setModal(null); handleDispatch(viewTr); }}>🚚 Dispatch</button>
+            )}
+            {/* Accept/Reject only shown for receiver (to_node matches my company) */}
+            {viewTr.status === 'dispatched' && nodeIdToInt(viewTr.to_node_id) === parseInt(cid) && (
+              <>
+                <button className="btn btn-primary" onClick={() => { setModal(null); handleReceive(viewTr); }}>✅ Accept</button>
+                <button className="btn btn-danger"  onClick={() => { setModal(null); handleReject(viewTr); }}>❌ Reject</button>
+              </>
+            )}
+            {viewTr.status === 'dispatched' && isAdmin && nodeIdToInt(viewTr.to_node_id) !== parseInt(cid) && (
+              <>
+                <button className="btn btn-primary" onClick={() => { setModal(null); handleReceive(viewTr); }}>✅ Accept (Admin)</button>
+                <button className="btn btn-danger"  onClick={() => { setModal(null); handleReject(viewTr); }}>❌ Reject (Admin)</button>
+              </>
+            )}
           </div>
         </Modal>
       )}

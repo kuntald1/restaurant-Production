@@ -883,12 +883,12 @@ def reject_transfer(db: Session, transfer_id: int, rejected_by: str = None):
 
 def get_incoming_transfers(db: Session, to_node_id: int, company_unique_id: int):
     """
-    Incoming transfers for a receiver node — only dispatched ones need action.
-    Used for Stock Receive page.
+    Incoming transfers for a receiver node.
+    Filters by to_node_id only — company_unique_id is the parent company
+    so branch transfers (company_unique_id=1) are visible to branch receivers.
     """
     trs = db.query(StockTransfer).filter(
         StockTransfer.to_node_id == to_node_id,
-        StockTransfer.company_unique_id == company_unique_id,
         StockTransfer.is_active == True,
     ).order_by(StockTransfer.transfer_date.desc()).all()
     for tr in trs:
