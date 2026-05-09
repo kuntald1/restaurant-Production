@@ -112,21 +112,38 @@ export function useInventoryNodes(cid) {
     }).finally(() => setLoadingNodes(false));
   }, [cid]);
 
+  // Find node by ID — handles both "b_3" (form) and 3 (from DB)
+  const findNode = (nodeId) => {
+    if (nodeId === null || nodeId === undefined || nodeId === '') return null;
+    const s = String(nodeId);
+    // Try exact match first ("b_3" === "b_3")
+    let n = nodes.find(n => String(n.node_id) === s);
+    if (n) return n;
+    // Try matching integer value (DB stores 3, node has "b_3")
+    const num = s.startsWith('b_') ? s.slice(2) : s;
+    n = nodes.find(n => {
+      const nid = String(n.node_id);
+      const nnum = nid.startsWith('b_') ? nid.slice(2) : nid;
+      return nnum === num;
+    });
+    return n || null;
+  };
+
   // Display with icon for table cells
   const getNodeDisplay = (nodeId) => {
-    const n = nodes.find(n => String(n.node_id) === String(nodeId));
+    const n = findNode(nodeId);
     if (!n) return '—';
     const indent = n.depth === 2 ? '↳ ' : n.depth === 3 ? '　↳ ' : '';
     return `${n.node_icon} ${indent}${n.node_name}`;
   };
 
   const getNodeName = (nodeId) => {
-    const n = nodes.find(n => String(n.node_id) === String(nodeId));
+    const n = findNode(nodeId);
     return n ? n.node_name : '—';
   };
 
   const getNodeType = (nodeId) => {
-    return nodes.find(n => String(n.node_id) === String(nodeId))?.node_type || '';
+    return findNode(nodeId)?.node_type || '';
   };
 
   return { nodes, loadingNodes, getNodeName, getNodeDisplay, getNodeType };
