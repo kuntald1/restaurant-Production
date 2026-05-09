@@ -469,12 +469,20 @@ export default function InvStockTransfer() {
                 <Input type="date" value={form.transfer_date} onChange={set('transfer_date')} required />
               </FormField>
               <div />
+              {/* From Node — locked to logged-in user's own company/node */}
               <FormField label="From Node (Sender)" required>
                 <Select value={form.from_node_id} onChange={(e) => { set('from_node_id')(e); setLines([]); }} required>
                   <option value="">— Select Source —</option>
-                  {nodes.map(n => <option key={n.node_id} value={n.node_id}>{n.node_label}</option>)}
+                  {nodes.filter(n => {
+                    // Show only nodes that belong to the logged-in company
+                    // Branch users: only their own branch (b_{cid})
+                    // Admin/WH users: all nodes
+                    if (isAdmin) return true;
+                    return String(n.node_id) === `b_${cid}` || n.node_id === cid;
+                  }).map(n => <option key={n.node_id} value={n.node_id}>{n.node_label}</option>)}
                 </Select>
               </FormField>
+              {/* To Node — all nodes except selected From Node */}
               <FormField label="To Node (Receiver)" required>
                 <Select value={form.to_node_id} onChange={set('to_node_id')} required>
                   <option value="">— Select Destination —</option>
