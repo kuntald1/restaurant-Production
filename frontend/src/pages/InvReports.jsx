@@ -291,7 +291,7 @@ export default function InvReports() {
                       { label: '🔴 Low Stock',    value: lowItems.length,  sub: 'Below reorder level', bg: '#FCEBEB', vc: '#A32D2D', lc: '#791F1F' },
                       { label: '🟡 Near Reorder', value: warnItems.length, sub: 'Within 20% of level',  bg: '#FAEEDA', vc: '#854F0B', lc: '#633806' },
                       { label: '✅ OK',           value: okItems.length,   sub: 'Sufficient stock',     bg: '#EAF3DE', vc: '#3B6D11', lc: '#27500A' },
-                      { label: '📍 Nodes',        value: nodeCount,        sub: 'Locations tracked',    bg: 'var(--color-background-secondary)', vc: 'var(--color-text-primary)', lc: 'var(--color-text-secondary)' },
+                      { label: '📍 With Stock',     value: nodeCount,        sub: 'Locations with stock',    bg: 'var(--color-background-secondary)', vc: 'var(--color-text-primary)', lc: 'var(--color-text-secondary)' },
                     ].map(c => (
                       <div key={c.label} style={{ background: c.bg, borderRadius: 10, padding: '14px 16px' }}>
                         <div style={{ fontSize: 12, color: c.lc, marginBottom: 6 }}>{c.label}</div>
