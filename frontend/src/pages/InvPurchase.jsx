@@ -350,8 +350,8 @@ export default function InvPurchase() {
         company_id:   cid,
         to_phone:     supplier.phone,
         message,
-        message_type: 'purchase_order',
-        sent_by:      user?.username,
+        message_type: 'bill',
+        sent_by:      user?.user_id || user?.id || null,
       });
       showToast(`PO sent to ${supplier.supplier_name} via WhatsApp ✅`);
       setWaModal(null);
