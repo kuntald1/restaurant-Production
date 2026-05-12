@@ -506,7 +506,7 @@ def post_grn(db: Session, grn_id: int, posted_by: str = None):
             transaction_type   = "invoice",
             amount             = grn.total_amount,
             transaction_date   = grn.grn_date,
-            reference_number   = grn.invoice_number or grn.grn_number,
+            reference_no       = grn.invoice_number or grn.grn_number,
             notes              = f"Auto-created from GRN {grn.grn_number}",
         )
         db.add(invoice_entry)
