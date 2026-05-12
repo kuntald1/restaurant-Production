@@ -330,7 +330,7 @@ export default function InvPurchase() {
   const handlePoWhatsApp = (po) => {
     const supplier = suppliers.find(s => s.supplier_id === po.supplier_id);
     if (!supplier?.phone) { showToast('Supplier phone number not set', 'error'); return; }
-    setWaModal({ po, supplier });
+    setWaModal({ type: 'po', po, supplier });
   };
 
   const sendPoWhatsApp = async () => {
