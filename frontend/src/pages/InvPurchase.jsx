@@ -186,7 +186,8 @@ function GrnLineEditor({ items, lines, onChange, poLines }) {
             style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--error)', fontSize: 18 }}
             onClick={() => removeLine(i)}>×</button>
         </div>
-      ))}
+        );
+      })}
 
       {hasPo && (
         <button type="button" className="btn btn-sm btn-ghost" onClick={addLine} style={{ marginTop: 4 }}>
