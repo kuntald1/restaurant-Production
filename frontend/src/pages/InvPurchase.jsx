@@ -360,12 +360,41 @@ export default function InvPurchase() {
     try {
       await smsSettingsAPI.sendWhatsApp({
         company_id:   cid,
-        to_phone:     supplier.phone,
+        to_phone:     waModal.supplier.phone,
         message,
         message_type: 'bill',
         sent_by:      user?.user_id || user?.id || null,
       });
-      showToast(`PO sent to ${supplier.supplier_name} via WhatsApp ✅`);
+
+      if (waModal.type === 'grn') {
+        showToast(`GRN receipt sent to ${waModal.supplier.supplier_name} via WhatsApp ✅`);
+      } else {
+        showToast(`PO sent to ${waModal.supplier.supplier_name} via WhatsApp ✅`);
+        // Auto-update PO status to "sent"
+        try {
+          const po = waModal.po;
+          await invPoAPI.update(po.po_id, {
+            po_number:        po.po_number,
+            supplier_id:      po.supplier_id,
+            node_id:          po.node_id,
+            po_date:          po.po_date,
+            expected_delivery: po.expected_delivery,
+            status:           'sent',
+            notes:            po.notes,
+            total_amount:     po.total_amount,
+            company_unique_id: cid,
+            updated_by:       user?.username,
+            items:            (po.items || []).map(i => ({
+              item_id:     i.item_id,
+              ordered_qty: i.ordered_qty,
+              unit_price:  i.unit_price,
+            })),
+          });
+          load();
+        } catch (updateErr) {
+          console.error('PO status update failed:', updateErr);
+        }
+      }
       setWaModal(null);
     } catch (err) {
       showToast(err.message || 'WhatsApp send failed', 'error');
