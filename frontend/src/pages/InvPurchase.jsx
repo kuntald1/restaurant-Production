@@ -34,7 +34,7 @@ const STATUS_COLOR = {
 };
 
 // ── Generate PO PDF as HTML ───────────────────────────────────
-function generatePoHtml(po, supplier, items, nodeLabel, companyName) {
+function generatePoHtml(po, supplier, items, nodeLabel, companyName, uoms = []) {
   const rows = (po.items || []).map(it => {
     const item = items.find(i => i.item_id === it.item_id);
     const total = (parseFloat(it.ordered_qty || 0) * parseFloat(it.unit_price || 0)).toFixed(2);
@@ -323,9 +323,19 @@ export default function InvPurchase() {
     setForm({ ...EMPTY_PO, po_number: num }); setLines([]); setEditId(null); setModal('po');
   };
 
-  const openEditPO = (row) => {
+  const openEditPO = async (row) => {
     setForm({ ...row, supplier_id: row.supplier_id || '', node_id: row.node_id || '' });
-    setLines((row.items || []).map(i => ({ item_id: i.item_id || '', qty: i.ordered_qty, unit_price: i.unit_price })));
+    // Fetch full PO with items if not already loaded
+    if (!row.items || row.items.length === 0) {
+      try {
+        const full = await invPoAPI.getById(row.po_id);
+        setLines((full.items || []).map(i => ({ item_id: String(i.item_id) || '', qty: i.ordered_qty, unit_price: i.unit_price })));
+      } catch {
+        setLines([]);
+      }
+    } else {
+      setLines((row.items || []).map(i => ({ item_id: String(i.item_id) || '', qty: i.ordered_qty, unit_price: i.unit_price })));
+    }
     setEditId(row.po_id); setModal('po');
   };
 
@@ -363,7 +373,7 @@ export default function InvPurchase() {
   const handlePoPdf = (po) => {
     const supplier = suppliers.find(s => s.supplier_id === po.supplier_id);
     const nodeLabel = getNodeName(po.node_id);
-    const html = generatePoHtml(po, supplier, items, nodeLabel, selectedCompany?.name || '');
+    const html = generatePoHtml(po, supplier, items, nodeLabel, selectedCompany?.name || '', uoms);
     printPo(html);
   };
 
