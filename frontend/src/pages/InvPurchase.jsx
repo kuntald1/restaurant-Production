@@ -198,11 +198,7 @@ function GrnLineEditor({ items, lines, onChange, poLines }) {
         );
       })}
 
-      {hasPo && (
-        <button type="button" className="btn btn-sm btn-ghost" onClick={addLine} style={{ marginTop: 4 }}>
-          + Add Extra Line
-        </button>
-      )}
+      {/* No extra lines allowed against a PO — only receive PO items */}
       {lines.length === 0 && !hasPo && (
         <p style={{ color: 'var(--text-3)', fontSize: 12 }}>No items added yet. Click "+ Add Line".</p>
       )}
