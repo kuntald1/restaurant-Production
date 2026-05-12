@@ -132,19 +132,23 @@ function GrnLineEditor({ items, lines, onChange, poLines }) {
         </div>
       )}
 
-      {lines.map((line, i) => (
+      {lines.map((line, i) => {
+        const isFullyReceived = hasPo && line.fully_received;
+        return (
         <div key={i} style={{
           display: 'grid',
           gridTemplateColumns: hasPo ? '2fr 0.8fr 0.8fr 0.8fr 0.8fr 32px' : '2fr 1fr 1fr 32px',
           gap: 6, marginBottom: 8, alignItems: 'center',
-          background: hasPo ? 'var(--bg)' : 'none',
+          background: isFullyReceived ? '#f0f0f0' : hasPo ? 'var(--bg)' : 'none',
           padding: hasPo ? '8px 10px' : 0,
           borderRadius: hasPo ? 6 : 0,
-          border: hasPo ? '1px solid var(--border)' : 'none',
+          border: hasPo ? `1px solid ${isFullyReceived ? '#ccc' : 'var(--border)'}` : 'none',
+          opacity: isFullyReceived ? 0.6 : 1,
         }}>
           {hasPo ? (
-            <span style={{ fontSize: 13, fontWeight: 500 }}>
+            <span style={{ fontSize: 13, fontWeight: 500, color: isFullyReceived ? '#999' : undefined }}>
               {items.find(it => String(it.item_id) === String(line.item_id))?.item_name || '—'}
+              {isFullyReceived && <span style={{ marginLeft: 8, fontSize: 11, color: 'var(--success)', fontWeight: 700 }}>✅ Already received</span>}
             </span>
           ) : (
             <Select value={line.item_id} onChange={(e) => setLine(i, 'item_id', e.target.value)}>
@@ -168,13 +172,15 @@ function GrnLineEditor({ items, lines, onChange, poLines }) {
             type="number" step="0.001" placeholder="Recv Qty"
             value={line.qty}
             onChange={(e) => setLine(i, 'qty', e.target.value)}
-            style={{ borderColor: hasPo ? 'var(--primary)' : undefined }}
+            disabled={isFullyReceived}
+            style={{ borderColor: isFullyReceived ? '#ccc' : hasPo ? 'var(--primary)' : undefined }}
           />
           <Input
             type="number" step="0.01" placeholder="₹ Price"
             value={line.unit_price}
             onChange={(e) => setLine(i, 'unit_price', e.target.value)}
-            style={{ borderColor: hasPo ? 'var(--primary)' : undefined }}
+            disabled={isFullyReceived}
+            style={{ borderColor: isFullyReceived ? '#ccc' : hasPo ? 'var(--primary)' : undefined }}
           />
           <button type="button"
             style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--error)', fontSize: 18 }}
@@ -416,33 +422,57 @@ export default function InvPurchase() {
   };
 
   // When Against PO changes — auto-populate GRN lines from PO items
-  const handlePoSelect = (poId) => {
+  // Subtracts already-received quantities from previous posted GRNs
+  const handlePoSelect = async (poId) => {
     setForm(f => ({ ...f, po_id: poId }));
     if (!poId) { setLines([]); setSelectedPo(null); return; }
     const po = pos.find(p => String(p.po_id) === String(poId));
     if (!po) { setSelectedPo(null); return; }
     setSelectedPo(po);
-    // Auto-fill supplier and node from PO
     setForm(f => ({
       ...f,
-      po_id: poId,
+      po_id:       poId,
       supplier_id: po.supplier_id || f.supplier_id,
-      node_id: po.node_id || f.node_id,
+      node_id:     po.node_id     || f.node_id,
     }));
-    // Pre-populate lines from PO with PO qty as reference, received qty defaults to same
-    setLines((po.items || []).map(it => ({
-      item_id:    it.item_id,
-      po_qty:     it.ordered_qty,
-      po_price:   it.unit_price,
-      qty:        it.ordered_qty, // default received = ordered
-      unit_price: it.unit_price,
-    })));
+
+    // Calculate already-received qty per item from posted GRNs
+    const alreadyReceived = {}; // item_id → total received qty
+    const postedGrns = grns.filter(g =>
+      String(g.po_id) === String(poId) && g.status === 'posted'
+    );
+    for (const pg of postedGrns) {
+      try {
+        const fullGrn = await invGrnAPI.getById(pg.grn_id);
+        (fullGrn.items || []).forEach(it => {
+          alreadyReceived[it.item_id] = (alreadyReceived[it.item_id] || 0) + parseFloat(it.received_qty || 0);
+        });
+      } catch {}
+    }
+
+    // Build lines with remaining qty
+    const newLines = (po.items || []).map(it => {
+      const ordered   = parseFloat(it.ordered_qty || 0);
+      const received  = alreadyReceived[it.item_id] || 0;
+      const remaining = Math.max(0, ordered - received);
+      return {
+        item_id:    it.item_id,
+        po_qty:     ordered,
+        po_price:   it.unit_price,
+        qty:        remaining,
+        unit_price: it.unit_price,
+        remaining,
+        fully_received: remaining <= 0,
+      };
+    });
+
+    setLines(newLines);
   };
 
   const handleGrnSubmit = async (e) => {
     e.preventDefault();
     if (lines.length === 0) { showToast('Add at least one line item to the GRN', 'error'); return; }
-    const validLines = lines.filter(l => l.item_id && l.qty && parseFloat(l.qty) > 0);
+    const validLines = lines.filter(l => l.item_id && l.qty && parseFloat(l.qty) > 0 && !l.fully_received);
     if (validLines.length === 0) { showToast('Enter received quantity for all items', 'error'); return; }
     const total = calcTotal(lines);
     if (total <= 0) { showToast('GRN total cannot be zero', 'error'); return; }
@@ -533,13 +563,26 @@ export default function InvPurchase() {
 
       {/* Tabs */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 20, borderBottom: '2px solid var(--border)' }}>
-        {[['po', '📋 Purchase Orders'], ['grn', '📦 Goods Receipt (GRN)']].map(([key, label]) => (
+        {[
+          { key: 'po',  label: '📋 Purchase Orders',    badge: pos.filter(p => p.status === 'draft').length },
+          { key: 'grn', label: '📦 Goods Receipt (GRN)', badge: grns.filter(g => g.status === 'draft').length },
+        ].map(({ key, label, badge }) => (
           <button key={key} onClick={() => setTab(key)} style={{
             padding: '8px 18px', border: 'none', background: 'none', cursor: 'pointer',
             fontWeight: tab === key ? 700 : 400, fontSize: 13,
             borderBottom: tab === key ? '2px solid var(--primary)' : '2px solid transparent',
             color: tab === key ? 'var(--primary)' : 'var(--text-3)', marginBottom: -2,
-          }}>{label}</button>
+            display: 'flex', alignItems: 'center', gap: 6,
+          }}>
+            {label}
+            {badge > 0 && (
+              <span style={{
+                background: 'var(--error)', color: '#fff',
+                borderRadius: 99, fontSize: 10, fontWeight: 700,
+                padding: '1px 6px', minWidth: 18, textAlign: 'center',
+              }}>{badge}</span>
+            )}
+          </button>
         ))}
       </div>
 
