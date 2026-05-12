@@ -478,7 +478,13 @@ export default function InvPurchase() {
       // Ask to send WhatsApp receipt to supplier
       const supplier = suppliers.find(s => s.supplier_id === grn.supplier_id);
       if (supplier?.phone) {
-        setWaModal({ type: 'grn', grn, supplier });
+        // Fetch full GRN with items for WhatsApp message
+        try {
+          const fullGrn = await invGrnAPI.getById(grn.grn_id);
+          setWaModal({ type: 'grn', grn: fullGrn, supplier });
+        } catch {
+          setWaModal({ type: 'grn', grn: { ...grn, items: [] }, supplier });
+        }
       }
     } catch (err) { showToast(err.message, 'error'); }
   };
