@@ -87,7 +87,19 @@ export default function InvReports() {
   useEffect(() => { if (tab === 'outstanding') loadOutstanding(); }, [tab, cid]);
 
   const getItemName = (id) => items.find(i => i.item_id === id)?.item_name || `Item #${id}`;
-  const getNodeName = (id) => nodes.find(n => n.node_id === id)?.node_name || `Node #${id}`;
+  const getNodeName = (id) => {
+    if (!id) return '—';
+    // Try exact match first
+    let n = nodes.find(n => String(n.node_id) === String(id));
+    if (n) return n.node_name;
+    // Try matching integer (DB stores 3, node has "b_3")
+    const num = String(id).replace('b_', '');
+    n = nodes.find(n => {
+      const nid = String(n.node_id).replace('b_', '');
+      return nid === num;
+    });
+    return n ? n.node_name : `Node #${id}`;
+  };
   const getItemReorder = (id) => {
     const item = items.find(i => i.item_id === id);
     return item ? parseFloat(item.reorder_level || 0) : 0;
@@ -150,7 +162,7 @@ export default function InvReports() {
             <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-3)', display: 'block', marginBottom: 4 }}>FILTER BY NODE</label>
             <select className="input select" value={filterNode} onChange={(e) => setFilterNode(e.target.value)} style={{ padding: '6px 10px', fontSize: 13 }}>
               <option value="">All Nodes</option>
-              {nodes.map(n => <option key={n.node_id} value={n.node_id}>{n.node_name}</option>)}
+              {nodes.map(n => <option key={n.node_id} value={n.node_id}>{n.node_label || n.node_name}</option>)}
             </select>
           </div>
         )}
@@ -180,7 +192,7 @@ export default function InvReports() {
               {Object.entries(balanceByNode).map(([nodeId, rows]) => (
                 <div key={nodeId} style={{ marginBottom: 20 }}>
                   <h3 style={{ fontSize: 14, fontWeight: 700, marginBottom: 10, color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: 8 }}>
-                    📍 {getNodeName(parseInt(nodeId))}
+                    📍 {getNodeName(nodeId)}
                     <span style={{ fontWeight: 400, color: 'var(--text-3)', fontSize: 12 }}>{rows.length} item(s)</span>
                   </h3>
                   <div className="table-wrapper">
