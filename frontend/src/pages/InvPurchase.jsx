@@ -465,10 +465,67 @@ export default function InvPurchase() {
     setLines([]); setSelectedPo(null); setEditId(null); setModal('grn');
   };
 
-  const openEditGRN = (row) => {
+  const openEditGRN = async (row) => {
     setForm({ ...row, supplier_id: row.supplier_id || '', node_id: row.node_id || '', po_id: row.po_id || '' });
-    setLines((row.items || []).map(i => ({ item_id: i.item_id || '', qty: i.received_qty, unit_price: i.unit_price, po_qty: 0, po_price: 0 })));
-    setSelectedPo(null); setEditId(row.grn_id); setModal('grn');
+    setEditId(row.grn_id);
+
+    // Fetch full GRN with items
+    let grnItems = row.items || [];
+    if (!grnItems.length) {
+      try {
+        const full = await invGrnAPI.getById(row.grn_id);
+        grnItems = full.items || [];
+      } catch {}
+    }
+
+    if (row.po_id) {
+      // PO-linked GRN: load PO for reference, lock items
+      const po = pos.find(p => p.po_id === row.po_id);
+      if (po) {
+        setSelectedPo(po);
+        // Map GRN items with PO reference data — item locked
+        const mappedLines = grnItems.map(gi => {
+          const poItem = (po.items || []).find(pi => pi.item_id === gi.item_id);
+          return {
+            item_id:    gi.item_id,
+            po_qty:     poItem?.ordered_qty || 0,
+            po_price:   poItem?.unit_price  || 0,
+            remaining:  poItem?.ordered_qty || 0, // will be recalculated
+            qty:        gi.received_qty,
+            unit_price: gi.unit_price,
+            fully_received: false,
+          };
+        });
+        setLines(mappedLines);
+      } else {
+        // PO not in list — fetch it
+        try {
+          const fullPo = await invPoAPI.getById(row.po_id);
+          setSelectedPo(fullPo);
+          const mappedLines = grnItems.map(gi => {
+            const poItem = (fullPo.items || []).find(pi => pi.item_id === gi.item_id);
+            return {
+              item_id:    gi.item_id,
+              po_qty:     poItem?.ordered_qty || 0,
+              po_price:   poItem?.unit_price  || 0,
+              remaining:  poItem?.ordered_qty || 0,
+              qty:        gi.received_qty,
+              unit_price: gi.unit_price,
+              fully_received: false,
+            };
+          });
+          setLines(mappedLines);
+        } catch {
+          setLines(grnItems.map(i => ({ item_id: i.item_id, qty: i.received_qty, unit_price: i.unit_price, po_qty: 0, po_price: 0 })));
+        }
+      }
+    } else {
+      // Free-form GRN — all editable
+      setSelectedPo(null);
+      setLines(grnItems.map(i => ({ item_id: String(i.item_id || ''), qty: i.received_qty, unit_price: i.unit_price, po_qty: 0, po_price: 0 })));
+    }
+
+    setModal('grn');
   };
 
   // When Against PO changes — auto-populate GRN lines from PO items
