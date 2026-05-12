@@ -287,7 +287,12 @@ def get_payment_ledger(db: Session, supplier_id: int):
     ).order_by(SupplierPaymentLedger.transaction_date.desc()).all()
 
 def get_supplier_outstanding(db: Session, supplier_id: int):
-    """invoices - payments = outstanding."""
+    """
+    Outstanding = invoices - payments - debit_notes
+    invoice    → increases outstanding (you owe supplier)
+    payment    → decreases outstanding (you paid supplier)
+    debit_note → decreases outstanding (supplier owes you credit)
+    """
     rows = db.query(
         SupplierPaymentLedger.transaction_type,
         func.sum(SupplierPaymentLedger.amount).label("total")
@@ -296,9 +301,10 @@ def get_supplier_outstanding(db: Session, supplier_id: int):
     ).group_by(SupplierPaymentLedger.transaction_type).all()
 
     totals = {row.transaction_type: row.total for row in rows}
-    invoices = totals.get("invoice", Decimal("0")) or Decimal("0")
-    payments = totals.get("payment", Decimal("0")) or Decimal("0")
-    return invoices - payments
+    invoices     = totals.get("invoice",    Decimal("0")) or Decimal("0")
+    payments     = totals.get("payment",    Decimal("0")) or Decimal("0")
+    debit_notes  = totals.get("debit_note", Decimal("0")) or Decimal("0")
+    return invoices - payments - debit_notes
 
 
 # ─────────────────────────────────────────────

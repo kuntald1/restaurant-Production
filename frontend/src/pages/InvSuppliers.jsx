@@ -192,13 +192,13 @@ export default function InvSuppliers() {
                   : ledger.slice(0, 8).map(l => (
                     <div key={l.ledger_id} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', borderBottom: '1px solid var(--border)', fontSize: 12 }}>
                       <div>
-                        <Badge variant={l.transaction_type === 'payment' ? 'success' : l.transaction_type === 'debit_note' ? 'warning' : 'info'}>
+                        <Badge variant={l.transaction_type === 'payment' || l.transaction_type === 'debit_note' ? 'success' : 'info'}>
                           {l.transaction_type}
                         </Badge>
                         <span style={{ marginLeft: 6, color: 'var(--text-3)' }}>{l.transaction_date}</span>
                       </div>
-                      <span style={{ fontWeight: 600, color: l.transaction_type === 'payment' ? 'var(--success)' : 'var(--error)' }}>
-                        {l.transaction_type === 'payment' ? '-' : '+'}₹{parseFloat(l.amount).toFixed(2)}
+                      <span style={{ fontWeight: 600, color: (l.transaction_type === 'payment' || l.transaction_type === 'debit_note') ? 'var(--success)' : 'var(--error)' }}>
+                        {(l.transaction_type === 'payment' || l.transaction_type === 'debit_note') ? '-' : '+'}₹{parseFloat(l.amount).toFixed(2)}
                       </span>
                     </div>
                   ))
