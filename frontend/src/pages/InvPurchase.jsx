@@ -179,7 +179,7 @@ function GrnLineEditor({ items, lines, onChange, poLines, getItemUom = () => '' 
             </>
           )}
 
-          <div>
+          <div style={{ position: 'relative' }}>
             <Input
               type="number" step="0.001" placeholder="Recv Qty"
               value={line.qty}
@@ -191,7 +191,11 @@ function GrnLineEditor({ items, lines, onChange, poLines, getItemUom = () => '' 
               disabled={isFullyReceived}
               style={{ borderColor: isFullyReceived ? '#ccc' : hasPo && parseFloat(line.qty) > line.remaining ? 'var(--error)' : hasPo ? 'var(--primary)' : undefined }}
             />
-            {line.item_id && <span style={{ fontSize: 10, color: 'var(--text-3)' }}>{getItemUom(line.item_id)}</span>}
+            {line.item_id && getItemUom(line.item_id) && (
+              <span style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', fontSize: 10, color: 'var(--text-3)', pointerEvents: 'none', background: 'var(--surface)', padding: '0 2px' }}>
+                {getItemUom(line.item_id)}
+              </span>
+            )}
           </div>
           <Input
             type="number" step="0.01" placeholder="₹ Price"
@@ -233,10 +237,14 @@ function PoLineEditor({ items, lines, onChange, getItemUom = () => '' }) {
             <option value="">— Item —</option>
             {items.map(it => <option key={it.item_id} value={it.item_id}>{it.item_name}</option>)}
           </Select>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <div style={{ position: 'relative' }}>
             <Input type="number" step="0.001" placeholder="Qty" value={line.qty}
               onChange={(e) => setLine(i, 'qty', e.target.value)} />
-            {line.item_id && <span style={{ fontSize: 11, color: 'var(--text-3)', whiteSpace: 'nowrap' }}>{getItemUom(line.item_id)}</span>}
+            {line.item_id && getItemUom(line.item_id) && (
+              <span style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', fontSize: 10, color: 'var(--text-3)', pointerEvents: 'none', background: 'var(--surface)', padding: '0 2px' }}>
+                {getItemUom(line.item_id)}
+              </span>
+            )}
           </div>
           <Input type="number" step="0.01" placeholder="₹ Price" value={line.unit_price}
             onChange={(e) => setLine(i, 'unit_price', e.target.value)} />
@@ -404,29 +412,33 @@ export default function InvPurchase() {
         showToast(`GRN receipt sent to ${waModal.supplier.supplier_name} via WhatsApp ✅`);
       } else {
         showToast(`PO sent to ${waModal.supplier.supplier_name} via WhatsApp ✅`);
-        // Auto-update PO status to "sent"
-        try {
-          const po = waModal.po;
-          await invPoAPI.update(po.po_id, {
-            po_number:        po.po_number,
-            supplier_id:      po.supplier_id,
-            node_id:          po.node_id,
-            po_date:          po.po_date,
-            expected_delivery: po.expected_delivery,
-            status:           'sent',
-            notes:            po.notes,
-            total_amount:     po.total_amount,
-            company_unique_id: cid,
-            updated_by:       user?.username,
-            items:            (po.items || []).map(i => ({
-              item_id:     i.item_id,
-              ordered_qty: i.ordered_qty,
-              unit_price:  i.unit_price,
-            })),
-          });
-          load();
-        } catch (updateErr) {
-          console.error('PO status update failed:', updateErr);
+        // Auto-update PO status draft → sent (only if currently draft)
+        if (waModal.po.status === 'draft') {
+          try {
+            const po = waModal.po;
+            await invPoAPI.update(po.po_id, {
+              po_number:         po.po_number,
+              supplier_id:       po.supplier_id,
+              node_id:           po.node_id,
+              po_date:           po.po_date,
+              expected_delivery: po.expected_delivery,
+              status:            'sent',
+              notes:             po.notes,
+              total_amount:      po.total_amount,
+              company_unique_id: cid,
+              updated_by:        user?.username,
+              items:             (po.items || []).map(i => ({
+                item_id:     i.item_id,
+                ordered_qty: i.ordered_qty,
+                unit_price:  i.unit_price,
+              })),
+            });
+            load();
+          } catch (updateErr) {
+            console.error('PO status update failed:', updateErr);
+          }
+        } else {
+          load(); // refresh list without changing status
         }
       }
       setWaModal(null);
