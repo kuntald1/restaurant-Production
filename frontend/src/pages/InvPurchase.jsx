@@ -25,7 +25,7 @@ const EMPTY_PO = {
 
 const EMPTY_GRN = {
   grn_number: '', po_id: '', supplier_id: '', node_id: '', grn_date: today(),
-  invoice_number: '', invoice_date: '', status: 'draft', notes: '', total_amount: 0,
+  invoice_number: '', invoice_date: null, status: 'draft', notes: '', total_amount: 0,
 };
 
 const STATUS_COLOR = {
@@ -449,12 +449,15 @@ export default function InvPurchase() {
     setSaving(true);
     try {
       const payload = {
-        ...form, company_unique_id: cid,
-        supplier_id: form.supplier_id ? parseInt(form.supplier_id) : null,
-        node_id: form.node_id ? parseInt(form.node_id) : null,
-        po_id: form.po_id ? parseInt(form.po_id) : null,
-        total_amount: total,
-        created_by: user?.username,
+        ...form,
+        company_unique_id: cid,
+        supplier_id:   form.supplier_id ? parseInt(form.supplier_id) : null,
+        node_id:       form.node_id ? parseInt(form.node_id) : null,
+        po_id:         form.po_id ? parseInt(form.po_id) : null,
+        total_amount:  total,
+        invoice_date:  form.invoice_date || null,
+        invoice_number: form.invoice_number || null,
+        created_by:    user?.username,
         items: validLines.map(l => ({
           item_id: parseInt(l.item_id), received_qty: parseFloat(l.qty), unit_price: parseFloat(l.unit_price || 0),
         })),
