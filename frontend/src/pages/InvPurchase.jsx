@@ -148,7 +148,12 @@ function GrnLineEditor({ items, lines, onChange, poLines }) {
           {hasPo ? (
             <span style={{ fontSize: 13, fontWeight: 500, color: isFullyReceived ? '#999' : undefined }}>
               {items.find(it => String(it.item_id) === String(line.item_id))?.item_name || '—'}
-              {isFullyReceived && <span style={{ marginLeft: 8, fontSize: 11, color: 'var(--success)', fontWeight: 700 }}>✅ Already received</span>}
+              {isFullyReceived && <span style={{ marginLeft: 8, fontSize: 11, color: 'var(--success)', fontWeight: 700 }}>✅ Fully received</span>}
+              {!isFullyReceived && hasPo && line.remaining !== undefined && (
+                <span style={{ marginLeft: 8, fontSize: 11, color: 'var(--text-3)' }}>
+                  Remaining: <b style={{ color: line.remaining > 0 ? 'var(--warning)' : 'var(--error)' }}>{parseFloat(line.remaining).toFixed(3)}</b>
+                </span>
+              )}
             </span>
           ) : (
             <Select value={line.item_id} onChange={(e) => setLine(i, 'item_id', e.target.value)}>
@@ -171,9 +176,13 @@ function GrnLineEditor({ items, lines, onChange, poLines }) {
           <Input
             type="number" step="0.001" placeholder="Recv Qty"
             value={line.qty}
-            onChange={(e) => setLine(i, 'qty', e.target.value)}
+            onChange={(e) => {
+              const val = e.target.value;
+              if (hasPo && line.remaining !== undefined && parseFloat(val) > line.remaining) return; // block exceed
+              setLine(i, 'qty', val);
+            }}
             disabled={isFullyReceived}
-            style={{ borderColor: isFullyReceived ? '#ccc' : hasPo ? 'var(--primary)' : undefined }}
+            style={{ borderColor: isFullyReceived ? '#ccc' : hasPo && parseFloat(line.qty) > line.remaining ? 'var(--error)' : hasPo ? 'var(--primary)' : undefined }}
           />
           <Input
             type="number" step="0.01" placeholder="₹ Price"
@@ -506,15 +515,29 @@ export default function InvPurchase() {
       await invGrnAPI.post(grn.grn_id, user?.username);
       showToast('GRN posted — stock updated! ✅');
       load();
-      // Ask to send WhatsApp receipt to supplier
+      // Auto-send WhatsApp receipt to supplier
       const supplier = suppliers.find(s => s.supplier_id === grn.supplier_id);
       if (supplier?.phone) {
-        // Fetch full GRN with items for WhatsApp message
         try {
           const fullGrn = await invGrnAPI.getById(grn.grn_id);
-          setWaModal({ type: 'grn', grn: fullGrn, supplier });
-        } catch {
-          setWaModal({ type: 'grn', grn: { ...grn, items: [] }, supplier });
+          const grnToSend = fullGrn || { ...grn, items: [] };
+          const nodeLabel = getNodeName(grnToSend.node_id);
+          const itemsList = (grnToSend.items || []).map(it => {
+            const item = items.find(i => i.item_id === it.item_id);
+            return `• ${item?.item_name || 'Item'}: ${parseFloat(it.received_qty || 0).toFixed(3)} @ ₹${parseFloat(it.unit_price || 0).toFixed(2)}`;
+          }).join('\n');
+          const message = `*GRN Receipt: ${grnToSend.grn_number}*\nFrom: ${selectedCompany?.name}\nDate: ${grnToSend.grn_date}\nReceived At: ${nodeLabel}\nInvoice#: ${grnToSend.invoice_number || '—'}\n\n*Items Received:*\n${itemsList}\n\n*Total: ₹${parseFloat(grnToSend.total_amount || 0).toFixed(2)}*\n\nThank you for the delivery.`;
+          await smsSettingsAPI.sendWhatsApp({
+            company_id:   cid,
+            to_phone:     supplier.phone,
+            message,
+            message_type: 'bill',
+            sent_by:      user?.user_id || user?.id || null,
+          });
+          showToast(`GRN receipt sent to ${supplier.supplier_name} via WhatsApp 📱`);
+        } catch (waErr) {
+          console.warn('WhatsApp send failed:', waErr);
+          // Don't block — GRN post was successful
         }
       }
     } catch (err) { showToast(err.message, 'error'); }
@@ -537,13 +560,14 @@ export default function InvPurchase() {
   ];
 
   const grnCols = [
-    { key: 'grn_number', label: 'GRN #' },
-    { key: 'supplier_id', label: 'Supplier', render: (v) => getSupplierName(v) },
-    { key: 'node_id', label: 'Received At', render: (v) => getNodeName(v) },
-    { key: 'grn_date', label: 'Date' },
+    { key: 'grn_number',    label: 'GRN #' },
+    { key: 'po_id',         label: 'PO #', render: (v) => v ? (pos.find(p => p.po_id === v)?.po_number || `PO#${v}`) : '—' },
+    { key: 'supplier_id',   label: 'Supplier', render: (v) => getSupplierName(v) },
+    { key: 'node_id',       label: 'Received At', render: (v) => getNodeName(v) },
+    { key: 'grn_date',      label: 'Date' },
     { key: 'invoice_number', label: 'Invoice #', render: (v) => v || '—' },
-    { key: 'status', label: 'Status', render: (v) => <Badge variant={STATUS_COLOR[v] || 'default'}>{v}</Badge> },
-    { key: 'total_amount', label: 'Total', render: (v) => `₹${parseFloat(v || 0).toFixed(2)}` },
+    { key: 'status',        label: 'Status', render: (v) => <Badge variant={STATUS_COLOR[v] || 'default'}>{v}</Badge> },
+    { key: 'total_amount',  label: 'Total', render: (v) => `₹${parseFloat(v || 0).toFixed(2)}` },
   ];
 
   if (!selectedCompany) return (
