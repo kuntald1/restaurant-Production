@@ -172,7 +172,7 @@ export default function InvPurchase() {
   };
 
   const getSupplierName = (id) => suppliers.find(s => s.supplier_id === id)?.supplier_name || '—';
-  const getNodeName     = (id) => nodes.find(n => n.node_id === id)?.node_name || '—';
+  const getNodeName     = (id) => { const n = nodes.find(n => String(n.node_id) === String(id)); return n ? n.node_label : '—'; };
   const getItemName     = (id) => items.find(i => i.item_id === id)?.item_name || id;
 
   const poCols = [
@@ -212,7 +212,7 @@ export default function InvPurchase() {
             <FormField label={isGrn ? 'Receive At Node' : 'Deliver To Node'}>
               <Select value={form.node_id} onChange={set('node_id')}>
                 <option value="">— None —</option>
-                {nodes.map(n => <option key={n.node_id} value={n.node_id}>{n.node_name} ({n.node_type})</option>)}
+                {nodes.map(n => <option key={n.node_id} value={n.node_id}>{n.node_label}</option>)}
               </Select>
             </FormField>
             <FormField label={isGrn ? 'GRN Date' : 'PO Date'} required>
