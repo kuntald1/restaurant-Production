@@ -11,7 +11,7 @@
  */
 
 import { useEffect, useState } from 'react';
-import { invPoAPI, invGrnAPI, invSupplierAPI, invItemAPI, smsSettingsAPI } from '../services/api';
+import { invPoAPI, invGrnAPI, invSupplierAPI, invItemAPI, invUomAPI, smsSettingsAPI } from '../services/api';
 import { useInventoryNodes } from './useInventoryNodes';
 import { Table, Modal, Badge, Spinner, PageHeader, FormField, Input, Select, Textarea, ConfirmDialog } from '../components/UI';
 import { useApp } from '../context/useApp';
@@ -38,10 +38,16 @@ function generatePoHtml(po, supplier, items, nodeLabel, companyName) {
   const rows = (po.items || []).map(it => {
     const item = items.find(i => i.item_id === it.item_id);
     const total = (parseFloat(it.ordered_qty || 0) * parseFloat(it.unit_price || 0)).toFixed(2);
+    const uomSym = (() => {
+      const itm = items.find(i => i.item_id === it.item_id);
+      if (!itm?.uom_id) return '';
+      const u = uoms ? uoms.find(u => u.uom_id === itm.uom_id) : null;
+      return u ? (u.uom_symbol || u.uom_name || '') : '';
+    })();
     return `<tr>
       <td>${item?.item_name || it.item_id}</td>
-      <td style="text-align:center">${parseFloat(it.ordered_qty || 0).toFixed(3)}</td>
-      <td style="text-align:right">₹${parseFloat(it.unit_price || 0).toFixed(2)}</td>
+      <td style="text-align:center">${parseFloat(it.ordered_qty || 0).toFixed(3)} ${uomSym}</td>
+      <td style="text-align:right">₹${parseFloat(it.unit_price || 0).toFixed(2)}/${uomSym || 'unit'}</td>
       <td style="text-align:right">₹${total}</td>
     </tr>`;
   }).join('');
@@ -108,7 +114,7 @@ function printPo(html) {
 }
 
 // ── GRN Line Editor with PO reference ────────────────────────
-function GrnLineEditor({ items, lines, onChange, poLines }) {
+function GrnLineEditor({ items, lines, onChange, poLines, getItemUom = () => '' }) {
   const addLine = () => onChange([...lines, { item_id: '', po_qty: 0, po_price: 0, qty: '', unit_price: '' }]);
   const removeLine = (i) => onChange(lines.filter((_, idx) => idx !== i));
   const setLine = (i, k, v) => onChange(lines.map((l, idx) => idx === i ? { ...l, [k]: v } : l));
@@ -165,7 +171,7 @@ function GrnLineEditor({ items, lines, onChange, poLines }) {
           {hasPo && (
             <>
               <span style={{ fontSize: 13, color: 'var(--text-3)', textAlign: 'center' }}>
-                {parseFloat(line.po_qty || 0).toFixed(3)}
+                {parseFloat(line.po_qty || 0).toFixed(3)} <span style={{ fontSize: 11 }}>{getItemUom(line.item_id)}</span>
               </span>
               <span style={{ fontSize: 13, color: 'var(--text-3)', textAlign: 'right' }}>
                 ₹{parseFloat(line.po_price || 0).toFixed(2)}
@@ -173,17 +179,20 @@ function GrnLineEditor({ items, lines, onChange, poLines }) {
             </>
           )}
 
-          <Input
-            type="number" step="0.001" placeholder="Recv Qty"
-            value={line.qty}
-            onChange={(e) => {
-              const val = e.target.value;
-              if (hasPo && line.remaining !== undefined && parseFloat(val) > line.remaining) return; // block exceed
-              setLine(i, 'qty', val);
-            }}
-            disabled={isFullyReceived}
-            style={{ borderColor: isFullyReceived ? '#ccc' : hasPo && parseFloat(line.qty) > line.remaining ? 'var(--error)' : hasPo ? 'var(--primary)' : undefined }}
-          />
+          <div>
+            <Input
+              type="number" step="0.001" placeholder="Recv Qty"
+              value={line.qty}
+              onChange={(e) => {
+                const val = e.target.value;
+                if (hasPo && line.remaining !== undefined && parseFloat(val) > line.remaining) return;
+                setLine(i, 'qty', val);
+              }}
+              disabled={isFullyReceived}
+              style={{ borderColor: isFullyReceived ? '#ccc' : hasPo && parseFloat(line.qty) > line.remaining ? 'var(--error)' : hasPo ? 'var(--primary)' : undefined }}
+            />
+            {line.item_id && <span style={{ fontSize: 10, color: 'var(--text-3)' }}>{getItemUom(line.item_id)}</span>}
+          </div>
           <Input
             type="number" step="0.01" placeholder="₹ Price"
             value={line.unit_price}
@@ -207,7 +216,7 @@ function GrnLineEditor({ items, lines, onChange, poLines }) {
 }
 
 // ── PO Line Editor ────────────────────────────────────────────
-function PoLineEditor({ items, lines, onChange }) {
+function PoLineEditor({ items, lines, onChange, getItemUom = () => '' }) {
   const addLine = () => onChange([...lines, { item_id: '', qty: '', unit_price: '' }]);
   const removeLine = (i) => onChange(lines.filter((_, idx) => idx !== i));
   const setLine = (i, k, v) => onChange(lines.map((l, idx) => idx === i ? { ...l, [k]: v } : l));
@@ -224,8 +233,11 @@ function PoLineEditor({ items, lines, onChange }) {
             <option value="">— Item —</option>
             {items.map(it => <option key={it.item_id} value={it.item_id}>{it.item_name}</option>)}
           </Select>
-          <Input type="number" step="0.001" placeholder="Qty" value={line.qty}
-            onChange={(e) => setLine(i, 'qty', e.target.value)} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <Input type="number" step="0.001" placeholder="Qty" value={line.qty}
+              onChange={(e) => setLine(i, 'qty', e.target.value)} />
+            {line.item_id && <span style={{ fontSize: 11, color: 'var(--text-3)', whiteSpace: 'nowrap' }}>{getItemUom(line.item_id)}</span>}
+          </div>
           <Input type="number" step="0.01" placeholder="₹ Price" value={line.unit_price}
             onChange={(e) => setLine(i, 'unit_price', e.target.value)} />
           <button type="button"
@@ -250,6 +262,7 @@ export default function InvPurchase() {
   const [grns,        setGrns]        = useState([]);
   const [suppliers,   setSuppliers]   = useState([]);
   const [items,       setItems]       = useState([]);
+  const [uoms,        setUoms]        = useState([]);
   const [loading,     setLoading]     = useState(false);
   const [modal,       setModal]       = useState(null);
   const [form,        setForm]        = useState(EMPTY_PO);
@@ -267,14 +280,16 @@ export default function InvPurchase() {
     if (!cid) return;
     setLoading(true);
     try {
-      const [p, g, s, i] = await Promise.allSettled([
+      const [p, g, s, i, u] = await Promise.allSettled([
         invPoAPI.getAll(cid), invGrnAPI.getAll(cid),
         invSupplierAPI.getAll(cid), invItemAPI.getAll(cid),
+        invUomAPI.getAll(cid),
       ]);
       setPos(p.status === 'fulfilled' ? (p.value || []) : []);
       setGrns(g.status === 'fulfilled' ? (g.value || []) : []);
       setSuppliers(s.status === 'fulfilled' ? (s.value || []) : []);
       setItems(i.status === 'fulfilled' ? (i.value || []) : []);
+      setUoms(u.status === 'fulfilled' ? (u.value || []) : []);
     } catch {}
     setLoading(false);
   };
@@ -286,7 +301,13 @@ export default function InvPurchase() {
 
   const getSupplierName = (id) => suppliers.find(s => s.supplier_id === id)?.supplier_name || '—';
   const getNodeName = (id) => { const n = nodes.find(n => String(n.node_id) === String(id)); return n ? n.node_label : '—'; };
-  const getItemName = (id) => items.find(i => i.item_id === id)?.item_name || id;
+  const getItemName   = (id) => items.find(i => i.item_id === id)?.item_name || id;
+  const getItemUom    = (itemId) => {
+    const item = items.find(i => String(i.item_id) === String(itemId));
+    if (!item?.uom_id) return '';
+    const uom = uoms.find(u => u.uom_id === item.uom_id);
+    return uom ? (uom.uom_symbol || uom.uom_name || '') : '';
+  };
 
   // ── PO ───────────────────────────────────────────────────────
   const openCreatePO = () => {
@@ -364,7 +385,8 @@ export default function InvPurchase() {
       const nodeLabel = getNodeName(po.node_id);
       const itemsList = (po.items || []).map(it => {
         const item = items.find(i => i.item_id === it.item_id);
-        return `• ${item?.item_name || 'Item'}: ${parseFloat(it.ordered_qty).toFixed(3)} @ ₹${parseFloat(it.unit_price).toFixed(2)}`;
+        const uom  = getItemUom(it.item_id);
+        return `• ${item?.item_name || 'Item'}: ${parseFloat(it.ordered_qty).toFixed(3)} ${uom} @ ₹${parseFloat(it.unit_price).toFixed(2)}/${uom || 'unit'}`;
       }).join('\n');
       message = `*Purchase Order: ${po.po_number}*\nFrom: ${selectedCompany?.name}\nDate: ${po.po_date}\nDeliver To: ${nodeLabel}\nExpected: ${po.expected_delivery || 'TBD'}\n\n*Items:*\n${itemsList}\n\n*Total: ₹${parseFloat(po.total_amount || 0).toFixed(2)}*\n\nPlease confirm receipt of this PO.`;
     }
@@ -520,7 +542,8 @@ export default function InvPurchase() {
           const nodeLabel = getNodeName(grnToSend.node_id);
           const itemsList = (grnToSend.items || []).map(it => {
             const item = items.find(i => i.item_id === it.item_id);
-            return `• ${item?.item_name || 'Item'}: ${parseFloat(it.received_qty || 0).toFixed(3)} @ ₹${parseFloat(it.unit_price || 0).toFixed(2)}`;
+            const uom  = getItemUom(it.item_id);
+            return `• ${item?.item_name || 'Item'}: ${parseFloat(it.received_qty || 0).toFixed(3)} ${uom} @ ₹${parseFloat(it.unit_price || 0).toFixed(2)}/${uom || 'unit'}`;
           }).join('\n');
           const message = `*GRN Receipt: ${grnToSend.grn_number}*\nFrom: ${selectedCompany?.name}\nDate: ${grnToSend.grn_date}\nReceived At: ${nodeLabel}\nInvoice#: ${grnToSend.invoice_number || '—'}\n\n*Items Received:*\n${itemsList}\n\n*Total: ₹${parseFloat(grnToSend.total_amount || 0).toFixed(2)}*\n\nThank you for the delivery.`;
           await smsSettingsAPI.sendWhatsApp({
@@ -671,7 +694,7 @@ export default function InvPurchase() {
               <Textarea value={form.notes} onChange={set('notes')} rows={2} />
             </FormField>
             <div style={{ marginTop: 16, paddingTop: 16, borderTop: '1px solid var(--border)' }}>
-              <PoLineEditor items={items} lines={lines} onChange={setLines} />
+              <PoLineEditor items={items} lines={lines} onChange={setLines} getItemUom={getItemUom} />
             </div>
             <div style={{ marginTop: 12, textAlign: 'right', fontWeight: 700, color: 'var(--primary)', fontSize: 15 }}>
               Total: ₹{calcTotal(lines).toFixed(2)}
@@ -756,6 +779,7 @@ export default function InvPurchase() {
                 lines={lines}
                 onChange={setLines}
                 poLines={selectedPo ? selectedPo.items : null}
+                getItemUom={getItemUom}
               />
             </div>
 
