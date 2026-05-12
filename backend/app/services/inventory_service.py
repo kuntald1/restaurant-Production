@@ -347,9 +347,34 @@ def get_po(db: Session, po_id: int):
 def update_po(db: Session, po_id: int, data: PurchaseOrderUpdate):
     po = db.query(PurchaseOrder).filter(PurchaseOrder.po_id == po_id).first()
     if not po: return None
-    for k, v in data.model_dump(exclude_unset=True).items():
+
+    update_data = data.model_dump(exclude_unset=True)
+    items_data  = update_data.pop('items', None)
+
+    # Update header fields
+    for k, v in update_data.items():
         setattr(po, k, v)
     po.updated_at = datetime.utcnow()
+
+    # Update line items if provided
+    if items_data is not None:
+        # Soft-delete existing items
+        db.query(PurchaseOrderItem).filter(
+            PurchaseOrderItem.po_id == po_id,
+            PurchaseOrderItem.is_active == True,
+        ).update({'is_active': False})
+
+        # Insert new items
+        for it in items_data:
+            new_item = PurchaseOrderItem(
+                company_unique_id = po.company_unique_id,
+                po_id             = po_id,
+                item_id           = it.get('item_id'),
+                ordered_qty       = it.get('ordered_qty'),
+                unit_price        = it.get('unit_price', 0),
+            )
+            db.add(new_item)
+
     db.commit()
     return _po_with_items(db, po_id)
 

@@ -291,14 +291,17 @@ class PurchaseOrderCreate(BaseModel):
 
 
 class PurchaseOrderUpdate(BaseModel):
+    po_number: Optional[str] = None
     supplier_id: Optional[int] = None
     node_id: Optional[int] = None
+    po_date: Optional[date] = None
     expected_delivery: Optional[date] = None
     status: Optional[str] = None
     notes: Optional[str] = None
     total_amount: Optional[Decimal] = None
     is_active: Optional[bool] = None
     updated_by: Optional[str] = None
+    items: Optional[List[POItemCreate]] = None
 
 
 class PurchaseOrderResponse(OrmBase):
