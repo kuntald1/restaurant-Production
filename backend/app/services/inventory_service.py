@@ -392,15 +392,66 @@ def get_grn(db: Session, grn_id: int):
     return _grn_with_items(db, grn_id)
 
 def post_grn(db: Session, grn_id: int, posted_by: str = None):
-    """Post a GRN → adds items to StockBalance at node, updates PO received qty."""
+    """
+    Post a GRN:
+    1. Block if already posted
+    2. Block if over-receipt vs PO ordered qty
+    3. Add items to StockBalance
+    4. Auto-update PO status (received / partially_received)
+    5. Create Payment Ledger invoice entry automatically
+    """
     grn = _grn_with_items(db, grn_id)
     if not grn:
         raise HTTPException(status_code=404, detail="GRN not found")
     if grn.status == "posted":
-        raise HTTPException(status_code=400, detail="GRN already posted")
+        raise HTTPException(status_code=400, detail="GRN already posted — cannot post again")
     if not grn.node_id:
         raise HTTPException(status_code=400, detail="GRN has no receiving node")
 
+    # ── Validate: check over-receipt vs PO ordered qty ────────
+    if grn.po_id:
+        po = db.query(PurchaseOrder).filter(PurchaseOrder.po_id == grn.po_id).first()
+        if po:
+            po_items_map = {pi.item_id: pi.ordered_qty for pi in
+                           db.query(PurchaseOrderItem).filter(
+                               PurchaseOrderItem.po_id == po.po_id,
+                               PurchaseOrderItem.is_active == True
+                           ).all()}
+
+            # Sum all previously posted GRNs for this PO
+            posted_grns = db.query(GoodsReceiptNote).filter(
+                GoodsReceiptNote.po_id == grn.po_id,
+                GoodsReceiptNote.status == "posted",
+                GoodsReceiptNote.is_active == True,
+                GoodsReceiptNote.grn_id != grn_id,
+            ).all()
+
+            already_received = {}
+            for pg in posted_grns:
+                pg_items = db.query(GoodsReceiptNoteItem).filter(
+                    GoodsReceiptNoteItem.grn_id == pg.grn_id,
+                    GoodsReceiptNoteItem.is_active == True,
+                ).all()
+                for pi in pg_items:
+                    already_received[pi.item_id] = already_received.get(pi.item_id, Decimal("0")) + pi.received_qty
+
+            # Check this GRN won't exceed PO qty
+            for item in grn.items:
+                if item.item_id and item.item_id in po_items_map:
+                    ordered = po_items_map[item.item_id]
+                    prev_received = already_received.get(item.item_id, Decimal("0"))
+                    total_after = prev_received + item.received_qty
+                    if total_after > ordered:
+                        inv_item = db.query(InventoryItem).filter(InventoryItem.item_id == item.item_id).first()
+                        item_name = inv_item.item_name if inv_item else f"Item #{item.item_id}"
+                        raise HTTPException(
+                            status_code=400,
+                            detail=f"Over-receipt for '{item_name}': PO ordered {ordered}, "
+                                   f"already received {prev_received}, this GRN adds {item.received_qty} "
+                                   f"(total would be {total_after})"
+                        )
+
+    # ── Add stock to balance ──────────────────────────────────
     for item in grn.items:
         if item.item_id:
             _adjust_balance(db, grn.company_unique_id, grn.node_id, item.item_id, item.received_qty)
@@ -409,6 +460,57 @@ def post_grn(db: Session, grn_id: int, posted_by: str = None):
     grn.updated_at = datetime.utcnow()
     if posted_by:
         grn.updated_by = posted_by
+
+    # ── Auto-update PO status ────────────────────────────────
+    if grn.po_id:
+        po = db.query(PurchaseOrder).filter(PurchaseOrder.po_id == grn.po_id).first()
+        if po:
+            po_items = db.query(PurchaseOrderItem).filter(
+                PurchaseOrderItem.po_id == po.po_id,
+                PurchaseOrderItem.is_active == True,
+            ).all()
+            po_ordered = {pi.item_id: pi.ordered_qty for pi in po_items}
+
+            # Sum ALL posted GRNs including this one
+            all_posted_grns = db.query(GoodsReceiptNote).filter(
+                GoodsReceiptNote.po_id == grn.po_id,
+                GoodsReceiptNote.is_active == True,
+            ).all()
+
+            total_received = {}
+            for pg in all_posted_grns:
+                grn_items_q = db.query(GoodsReceiptNoteItem).filter(
+                    GoodsReceiptNoteItem.grn_id == pg.grn_id,
+                    GoodsReceiptNoteItem.is_active == True,
+                ).all()
+                for gi in grn_items_q:
+                    total_received[gi.item_id] = total_received.get(gi.item_id, Decimal("0")) + gi.received_qty
+            # Include current GRN items
+            for item in grn.items:
+                if item.item_id:
+                    total_received[item.item_id] = total_received.get(item.item_id, Decimal("0")) + item.received_qty
+
+            # Check if all items fully received
+            fully_received = all(
+                total_received.get(item_id, Decimal("0")) >= ordered_qty
+                for item_id, ordered_qty in po_ordered.items()
+            )
+            po.status = "received" if fully_received else "partially_received"
+            po.updated_at = datetime.utcnow()
+
+    # ── Auto-create Payment Ledger invoice entry ─────────────
+    if grn.supplier_id and grn.total_amount and grn.total_amount > 0:
+        invoice_entry = SupplierPaymentLedger(
+            company_unique_id  = grn.company_unique_id,
+            supplier_id        = grn.supplier_id,
+            transaction_type   = "invoice",
+            amount             = grn.total_amount,
+            transaction_date   = grn.grn_date,
+            reference_number   = grn.invoice_number or grn.grn_number,
+            notes              = f"Auto-created from GRN {grn.grn_number}",
+        )
+        db.add(invoice_entry)
+
     db.commit()
     return _grn_with_items(db, grn_id)
 

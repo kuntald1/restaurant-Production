@@ -336,14 +336,26 @@ export default function InvPurchase() {
   const sendPoWhatsApp = async () => {
     if (!waModal) return;
     setWaSending(true);
-    const { po, supplier } = waModal;
-    const nodeLabel = getNodeName(po.node_id);
-    const itemsList = (po.items || []).map(it => {
-      const item = items.find(i => i.item_id === it.item_id);
-      return `• ${item?.item_name || 'Item'}: ${parseFloat(it.ordered_qty).toFixed(3)} @ ₹${parseFloat(it.unit_price).toFixed(2)}`;
-    }).join('\n');
+    const { supplier } = waModal;
+    let message = '';
 
-    const message = `*Purchase Order: ${po.po_number}*\nFrom: ${selectedCompany?.name}\nDate: ${po.po_date}\nDeliver To: ${nodeLabel}\nExpected: ${po.expected_delivery || 'TBD'}\n\n*Items:*\n${itemsList}\n\n*Total: ₹${parseFloat(po.total_amount || 0).toFixed(2)}*\n\nPlease confirm receipt of this PO.`;
+    if (waModal.type === 'grn') {
+      const { grn } = waModal;
+      const nodeLabel = getNodeName(grn.node_id);
+      const itemsList = (grn.items || []).map(it => {
+        const item = items.find(i => i.item_id === it.item_id);
+        return `• ${item?.item_name || 'Item'}: ${parseFloat(it.received_qty).toFixed(3)} @ ₹${parseFloat(it.unit_price).toFixed(2)}`;
+      }).join('\n');
+      message = `*GRN Receipt: ${grn.grn_number}*\nFrom: ${selectedCompany?.name}\nDate: ${grn.grn_date}\nReceived At: ${nodeLabel}\nInvoice#: ${grn.invoice_number || '—'}\n\n*Items Received:*\n${itemsList}\n\n*Total: ₹${parseFloat(grn.total_amount || 0).toFixed(2)}*\n\nThank you for the delivery.`;
+    } else {
+      const { po } = waModal;
+      const nodeLabel = getNodeName(po.node_id);
+      const itemsList = (po.items || []).map(it => {
+        const item = items.find(i => i.item_id === it.item_id);
+        return `• ${item?.item_name || 'Item'}: ${parseFloat(it.ordered_qty).toFixed(3)} @ ₹${parseFloat(it.unit_price).toFixed(2)}`;
+      }).join('\n');
+      message = `*Purchase Order: ${po.po_number}*\nFrom: ${selectedCompany?.name}\nDate: ${po.po_date}\nDeliver To: ${nodeLabel}\nExpected: ${po.expected_delivery || 'TBD'}\n\n*Items:*\n${itemsList}\n\n*Total: ₹${parseFloat(po.total_amount || 0).toFixed(2)}*\n\nPlease confirm receipt of this PO.`;
+    }
 
     try {
       await smsSettingsAPI.sendWhatsApp({
@@ -431,6 +443,11 @@ export default function InvPurchase() {
       await invGrnAPI.post(grn.grn_id, user?.username);
       showToast('GRN posted — stock updated! ✅');
       load();
+      // Ask to send WhatsApp receipt to supplier
+      const supplier = suppliers.find(s => s.supplier_id === grn.supplier_id);
+      if (supplier?.phone) {
+        setWaModal({ type: 'grn', grn, supplier });
+      }
     } catch (err) { showToast(err.message, 'error'); }
   };
 
@@ -591,7 +608,14 @@ export default function InvPurchase() {
               <FormField label="Against PO">
                 <Select value={form.po_id} onChange={(e) => handlePoSelect(e.target.value)}>
                   <option value="">— None —</option>
-                  {pos.map(p => <option key={p.po_id} value={p.po_id}>{p.po_number}</option>)}
+                  {pos
+                    .filter(p => p.status !== 'draft')
+                    .map(p => (
+                      <option key={p.po_id} value={p.po_id}>
+                        {p.po_number} — {getSupplierName(p.supplier_id)} ({p.status})
+                      </option>
+                    ))
+                  }
                 </Select>
               </FormField>
               <FormField label="Invoice #">
@@ -647,7 +671,7 @@ export default function InvPurchase() {
 
       {/* ── WhatsApp Modal ── */}
       {waModal && (
-        <Modal title="📱 Send PO via WhatsApp" onClose={() => setWaModal(null)} size="md">
+        <Modal title={waModal.type === "grn" ? "📱 Send GRN Receipt via WhatsApp" : "📱 Send PO via WhatsApp"} onClose={() => setWaModal(null)} size="md">
           <div style={{ marginBottom: 16 }}>
             <div style={{ background: 'var(--bg)', borderRadius: 8, padding: 14, marginBottom: 12 }}>
               <div style={{ fontSize: 13, marginBottom: 4 }}>
