@@ -5,179 +5,138 @@ import { useApp } from '../context/useApp';
 
 const EMPTY = { company_unique_id: '', role_name: '', description: '', is_active: true };
 
-// Flatten nested menu tree into a list preserving parent info
 function flattenMenuTree(nodes, depth = 0, result = []) {
   for (const n of nodes) {
-    result.push({
-      id:       n.menuid,
-      name:     n.menuname,
-      url:      n.menuurl,
-      icon:     n.menuicon,
-      desc:     n.menudesc,
-      parentid: n.parentmenuid,
-      depth,
-    });
+    result.push({ id: n.menuid, name: n.menuname, url: n.menuurl, icon: n.menuicon, desc: n.menudesc, parentid: n.parentmenuid, depth });
     if (n.children?.length) flattenMenuTree(n.children, depth + 1, result);
   }
   return result;
 }
 
 export default function UserRoles() {
-  const { selectedCompany, showToast, user, allCompanies } = useApp();
+  const { selectedCompany, showToast, user } = useApp();
   const isSuperAdmin = user?.is_super_admin === true;
-  const isAdmin      = user?.is_admin      === true;
   const cid = selectedCompany?.company_unique_id;
 
   const [roles,       setRoles]       = useState([]);
   const [loading,     setLoading]     = useState(false);
-  const [modal,       setModal]       = useState(null); // 'create' | 'edit' | 'permissions'
+  const [modal,       setModal]       = useState(null);
   const [form,        setForm]        = useState(EMPTY);
   const [editId,      setEditId]      = useState(null);
   const [confirm,     setConfirm]     = useState(null);
   const [saving,      setSaving]      = useState(false);
 
   // Permission panel state
-  const [permRole,    setPermRole]    = useState(null);   // role object
-  // Branch selector inside permissions panel
-  const [branches,         setBranches]         = useState([]);  // [{company_unique_id, name}]
-  const [selectedBranchIds, setSelectedBranchIds] = useState(new Set()); // Set of cids; empty = all
-  const [allMenus,    setAllMenus]    = useState([]);     // flat menu list
-  const [mappings,    setMappings]    = useState([]);     // existing userrolemappings for this role
-  const [permLoading, setPermLoading] = useState(false);
-  const [toggling,    setToggling]    = useState(null);   // menu_id being toggled
-  const [searchMenu,  setSearchMenu]  = useState('');
+  const [permRole,         setPermRole]         = useState(null);
+  const [branches,         setBranches]         = useState([]);
+  const [selectedBranchCid, setSelectedBranchCid] = useState('all'); // 'all' or a numeric cid string
+  const [allMenus,         setAllMenus]         = useState([]);
+  const [mappings,         setMappings]         = useState([]);
+  const [permLoading,      setPermLoading]      = useState(false);
+  const [toggling,         setToggling]         = useState(null);
+  const [searchMenu,       setSearchMenu]       = useState('');
 
-  // ── Load roles ───────────────────────────────────────────
+  // ── Load roles ────────────────────────────────────────────
   const loadRoles = useCallback(async () => {
     if (!cid) return;
     setLoading(true);
     try {
       const all = await userRolesAPI.getAll(cid);
-      // Admin users cannot see or manage Super Admin roles
-      const filtered = isSuperAdmin
-        ? all
-        : all.filter(r => !(r.role_name || '').toLowerCase().includes('super'));
-      setRoles(filtered);
+      setRoles(isSuperAdmin ? all : all.filter(r => !(r.role_name || '').toLowerCase().includes('super')));
     } catch { setRoles([]); }
     setLoading(false);
   }, [cid]);
 
   useEffect(() => { loadRoles(); }, [cid]);
 
-  // ── Load permissions for a role ───────────────────────────
+  // ── Load mappings for a specific company_unique_id ────────
+  const loadMappingsForBranch = async (branchCid, roleId) => {
+    try {
+      const maps = await roleMappingAPI.getMenusByRole(branchCid, roleId);
+      setMappings(maps || []);
+    } catch { setMappings([]); }
+  };
+
+  // ── Open permissions modal ────────────────────────────────
   const openPermissions = async (role) => {
     setPermRole(role);
     setModal('permissions');
     setPermLoading(true);
     setSearchMenu('');
-    setSelectedBranchIds(new Set()); // empty = all branches
-    // Load child branches so admin can scope the permission per branch
+    setSelectedBranchCid('all');
+    setMappings([]);
+
     try {
       const branchList = await invNodeAPI.getBranches(cid);
-      // branchList = [{company_unique_id, name, parant_company_unique_id, ...}]
       setBranches(branchList || []);
     } catch { setBranches([]); }
+
     try {
-      const [menuTree, roleMaps] = await Promise.allSettled([
-        // Menu TREE → has real names, urls, icons, parent structure
-        menuAPI.getByCompany(cid),
-        // Mappings for THIS role → which boxes are checked
-        roleMappingAPI.getMenusByRole(cid, role.userrole_id),
-      ]);
+      const menuTree = await menuAPI.getByCompany(cid);
+      setAllMenus(flattenMenuTree(menuTree));
+      // Load mappings for 'all' = use cid by default
+      await loadMappingsForBranch(cid, role.userrole_id);
+    } catch { setAllMenus([]); setMappings([]); }
 
-      // Flatten menu tree preserving parent/child structure and real names
-      const allMenuList = menuTree.status === 'fulfilled'
-        ? flattenMenuTree(menuTree.value)
-        : [];
-
-      setAllMenus(allMenuList);
-      setMappings(roleMaps.status === 'fulfilled' ? roleMaps.value : []);
-    } catch (e) {
-      console.error(e);
-      setAllMenus([]); setMappings([]);
-    }
     setPermLoading(false);
   };
 
-  // ── Helper: which company_unique_ids to write for current branch selection ──
-  const allBranchCids = () => {
-    const childCids = branches.map(b => Number(b.company_unique_id));
-    return [...new Set([Number(cid), ...childCids])];
+  // ── When branch dropdown changes → reload mappings for that branch ─────────
+  const handleBranchChange = async (val) => {
+    setSelectedBranchCid(val);
+    if (!permRole) return;
+    setPermLoading(true);
+    const targetCid = val === 'all' ? cid : Number(val);
+    await loadMappingsForBranch(targetCid, permRole.userrole_id);
+    setPermLoading(false);
   };
-  const targetCids = () => {
-    // If nothing selected → means ALL
-    if (selectedBranchIds.size === 0) return allBranchCids();
-    return [...selectedBranchIds];
-  };
-  const toggleBranchId = (id) => {
-    setSelectedBranchIds(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
-    });
-  };
-  const isAllSelected = selectedBranchIds.size === 0;
+
+  // ── Which company_unique_id to write to ──────────────────
+  const getActiveCid = () => selectedBranchCid === 'all' ? Number(cid) : Number(selectedBranchCid);
 
   // ── Toggle a menu permission ──────────────────────────────
   const toggleMenu = async (menuItem) => {
-    // checked = at least one mapping exists for this menu (any branch)
-    const existing = mappings.filter(m => m.menu_id === menuItem.id);
+    const activeCid = getActiveCid();
+    const existing  = mappings.find(m => m.menu_id === menuItem.id && Number(m.company_unique_id) === activeCid);
     setToggling(menuItem.id);
     try {
-      if (existing.length > 0) {
-        // UNCHECK → delete all mappings for this menu across selected cids
-        const cidsToRemove = targetCids();
-        const toDelete = existing.filter(m => cidsToRemove.includes(Number(m.company_unique_id)));
-        for (const m of toDelete) {
-          await roleMappingAPI.delete(m.userrolemapping_id);
-        }
-        const deletedIds = toDelete.map(m => m.userrolemapping_id);
-        setMappings(prev => prev.filter(m => !deletedIds.includes(m.userrolemapping_id)));
+      if (existing) {
+        await roleMappingAPI.delete(existing.userrolemapping_id);
+        setMappings(prev => prev.filter(m => m.userrolemapping_id !== existing.userrolemapping_id));
       } else {
-        // CHECK → create one row per selected cid
-        const newMaps = [];
-        for (const companyId of targetCids()) {
-          const newMap = await roleMappingAPI.create({
-            userrole_id:       permRole.userrole_id,
-            menu_id:           menuItem.id,
-            company_unique_id: companyId,
-            is_active:         true,
-            created_by:        user?.user_id || 1,
-          });
-          newMaps.push(newMap);
-        }
-        setMappings(prev => [...prev, ...newMaps]);
+        const newMap = await roleMappingAPI.create({
+          userrole_id:       permRole.userrole_id,
+          menu_id:           menuItem.id,
+          company_unique_id: activeCid,
+          is_active:         true,
+          created_by:        user?.user_id || 1,
+        });
+        setMappings(prev => [...prev, newMap]);
       }
     } catch (e) { showToast(e.message, 'error'); }
     setToggling(null);
   };
 
-  // Select All / Deselect All
+  // ── Select All / Deselect All ─────────────────────────────
   const selectAll = async () => {
-    const cidsToUse = targetCids();
-    const unselected = filtered.filter(m =>
-      !mappings.find(x => x.menu_id === m.id && cidsToUse.includes(Number(x.company_unique_id)))
-    );
+    const activeCid  = getActiveCid();
+    const unselected = filtered.filter(m => !mappings.find(x => x.menu_id === m.id && Number(x.company_unique_id) === activeCid));
     for (const m of unselected) {
-      for (const companyId of cidsToUse) {
-        try {
-          const newMap = await roleMappingAPI.create({
-            userrole_id: permRole.userrole_id, menu_id: m.id,
-            company_unique_id: companyId, is_active: true, created_by: user?.user_id || 1,
-          });
-          setMappings(prev => [...prev, newMap]);
-        } catch {}
-      }
+      try {
+        const newMap = await roleMappingAPI.create({
+          userrole_id: permRole.userrole_id, menu_id: m.id,
+          company_unique_id: activeCid, is_active: true, created_by: user?.user_id || 1,
+        });
+        setMappings(prev => [...prev, newMap]);
+      } catch {}
     }
     showToast('All menus selected!');
   };
 
   const deselectAll = async () => {
-    const cidsToUse = targetCids();
-    const selected = mappings.filter(m =>
-      filtered.find(f => f.id === m.menu_id) && cidsToUse.includes(Number(m.company_unique_id))
-    );
-    for (const m of selected) {
+    const activeCid = getActiveCid();
+    const toRemove  = mappings.filter(m => filtered.find(f => f.id === m.menu_id) && Number(m.company_unique_id) === activeCid);
+    for (const m of toRemove) {
       try {
         await roleMappingAPI.delete(m.userrolemapping_id);
         setMappings(prev => prev.filter(x => x.userrolemapping_id !== m.userrolemapping_id));
@@ -188,19 +147,14 @@ export default function UserRoles() {
 
   // ── Role CRUD ─────────────────────────────────────────────
   const openCreate = () => { setForm({ ...EMPTY, company_unique_id: cid }); setModal('create'); };
-  const openEdit   = (r)  => { setForm({ ...r }); setEditId(r.userrole_id); setModal('edit'); };
+  const openEdit   = (r) => { setForm({ ...r }); setEditId(r.userrole_id); setModal('edit'); };
 
   const handleSubmit = async (e) => {
     e.preventDefault(); setSaving(true);
     try {
-      const payload = {
-        ...form,
-        company_unique_id: parseInt(form.company_unique_id),
-        description: form.description?.trim() || null,
-        created_by: user?.user_id || null,
-      };
-      if (modal === 'create') { await userRolesAPI.create(payload);          showToast('Role created!'); }
-      else                    { await userRolesAPI.update(editId, payload);  showToast('Role updated!'); }
+      const payload = { ...form, company_unique_id: parseInt(form.company_unique_id), description: form.description?.trim() || null, created_by: user?.user_id || null };
+      if (modal === 'create') { await userRolesAPI.create(payload); showToast('Role created!'); }
+      else                    { await userRolesAPI.update(editId, payload); showToast('Role updated!'); }
       setModal(null); loadRoles();
     } catch (e) { showToast(e.message, 'error'); }
     setSaving(false);
@@ -214,12 +168,13 @@ export default function UserRoles() {
 
   const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }));
 
-  // Filtered menus for search
   const filtered = allMenus.filter(m =>
     !searchMenu || m.name.toLowerCase().includes(searchMenu.toLowerCase()) || (m.url || '').toLowerCase().includes(searchMenu.toLowerCase())
   );
 
-  const checkedCount = mappings.length;
+  // Checked = mapping exists for the currently selected branch
+  const activeCid    = getActiveCid();
+  const checkedCount = mappings.filter(m => Number(m.company_unique_id) === activeCid).length;
   const totalCount   = allMenus.length;
 
   const cols = [
@@ -228,6 +183,15 @@ export default function UserRoles() {
     { key: 'description', label: 'Description', render: v => <span style={{ color: 'var(--text-2)', fontSize: 13 }}>{v || '—'}</span> },
     { key: 'created_at',  label: 'Created', render: v => v ? new Date(v).toLocaleDateString() : '—' },
     { key: 'is_active',   label: 'Status', render: v => <Badge variant={v ? 'success' : 'error'}>{v ? 'Active' : 'Inactive'}</Badge> },
+  ];
+
+  // Build branch dropdown options
+  const branchOptions = [
+    { value: 'all', label: '🏢 All branches (default)', cid: Number(cid) },
+    { value: String(cid), label: `🏭 ${selectedCompany?.name} (this company)`, cid: Number(cid) },
+    ...branches
+      .filter(b => Number(b.company_unique_id) !== Number(cid))
+      .map(b => ({ value: String(b.company_unique_id), label: `🏪 ${b.name}`, cid: Number(b.company_unique_id) })),
   ];
 
   if (!selectedCompany) return (
@@ -303,67 +267,25 @@ export default function UserRoles() {
               <div style={{ height: '100%', width: `${totalCount ? (checkedCount / totalCount) * 100 : 0}%`, background: 'var(--primary)', transition: 'width .3s', borderRadius: 2 }} />
             </div>
 
-            {/* Branch selector + Toolbar */}
+            {/* Branch selector dropdown */}
             {branches.length > 0 && (
-              <div style={{ padding: '8px 14px', borderBottom: '1px solid var(--border)', background: 'var(--bg)' }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-3)', marginBottom: 6, letterSpacing: '0.05em' }}>
-                  APPLY TO — select one or more branches
-                </div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                  {/* ALL pill */}
-                  <button
-                    onClick={() => setSelectedBranchIds(new Set())}
-                    style={{
-                      padding: '4px 12px', borderRadius: 99, fontSize: 12, fontWeight: 600, cursor: 'pointer',
-                      border: `1.5px solid ${isAllSelected ? 'var(--primary)' : 'var(--border)'}`,
-                      background: isAllSelected ? 'var(--primary)' : 'var(--white)',
-                      color: isAllSelected ? '#fff' : 'var(--text-2)',
-                    }}
-                  >
-                    🏢 All branches
-                  </button>
-                  {/* Parent company pill */}
-                  {(() => {
-                    const id = Number(cid);
-                    const sel = selectedBranchIds.has(id);
-                    return (
-                      <button key={id} onClick={() => toggleBranchId(id)} style={{
-                        padding: '4px 12px', borderRadius: 99, fontSize: 12, fontWeight: 600, cursor: 'pointer',
-                        border: `1.5px solid ${sel ? 'var(--primary)' : 'var(--border)'}`,
-                        background: sel ? 'var(--primary-light)' : 'var(--white)',
-                        color: sel ? 'var(--primary)' : 'var(--text-2)',
-                      }}>
-                        🏭 {selectedCompany?.name}
-                      </button>
-                    );
-                  })()}
-                  {/* Child branch pills */}
-                  {branches
-                    .filter(b => Number(b.company_unique_id) !== Number(cid))
-                    .map(b => {
-                      const id = Number(b.company_unique_id);
-                      const sel = selectedBranchIds.has(id);
-                      return (
-                        <button key={id} onClick={() => toggleBranchId(id)} style={{
-                          padding: '4px 12px', borderRadius: 99, fontSize: 12, fontWeight: 600, cursor: 'pointer',
-                          border: `1.5px solid ${sel ? 'var(--primary)' : 'var(--border)'}`,
-                          background: sel ? 'var(--primary-light)' : 'var(--white)',
-                          color: sel ? 'var(--primary)' : 'var(--text-2)',
-                        }}>
-                          🏪 {b.name}
-                        </button>
-                      );
-                    })
-                  }
-                </div>
-                <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 5 }}>
-                  {isAllSelected
-                    ? `✓ All ${allBranchCids().length} branches selected`
-                    : `✓ ${selectedBranchIds.size} branch${selectedBranchIds.size > 1 ? 'es' : ''} selected`
-                  }
-                </div>
+              <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)', background: 'var(--bg)', display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-3)', whiteSpace: 'nowrap', letterSpacing: '0.04em' }}>APPLY TO</span>
+                <select
+                  value={selectedBranchCid}
+                  onChange={e => handleBranchChange(e.target.value)}
+                  style={{ flex: 1, padding: '7px 10px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 13, fontFamily: 'var(--font-sans)', background: 'var(--white)', cursor: 'pointer' }}
+                >
+                  {branchOptions.map(opt => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </select>
+                <span style={{ fontSize: 11, color: 'var(--text-3)', whiteSpace: 'nowrap' }}>
+                  cid: {activeCid}
+                </span>
               </div>
             )}
+
             {/* Toolbar */}
             <div style={PS.toolbar}>
               <input
@@ -386,7 +308,7 @@ export default function UserRoles() {
                 <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-3)' }}>No menus found</div>
               ) : (
                 filtered.map(menu => {
-                  const mapping  = mappings.find(m => m.menu_id === menu.id);
+                  const mapping  = mappings.find(m => m.menu_id === menu.id && Number(m.company_unique_id) === activeCid);
                   const checked  = !!mapping;
                   const isParent = !menu.parentid;
                   const busy     = toggling === menu.id;
@@ -402,37 +324,24 @@ export default function UserRoles() {
                       }}
                       onClick={() => !busy && toggleMenu(menu)}
                     >
-                      {/* Checkbox */}
-                      <div style={{
-                        ...PS.checkbox,
-                        background: checked ? 'var(--primary)' : 'var(--white)',
-                        borderColor: checked ? 'var(--primary)' : 'var(--border)',
-                      }}>
+                      <div style={{ ...PS.checkbox, background: checked ? 'var(--primary)' : 'var(--white)', borderColor: checked ? 'var(--primary)' : 'var(--border)' }}>
                         {busy ? <span style={{ fontSize: 10 }}>…</span>
                           : checked ? <span style={{ color: '#fff', fontSize: 11, fontWeight: 800 }}>✓</span>
                           : null}
                       </div>
-
-                      {/* Menu info */}
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                           <span style={{ fontWeight: isParent ? 700 : 500, fontSize: 13, color: checked ? 'var(--primary)' : 'var(--text-1)' }}>
                             {isParent ? '📁' : '📄'} {menu.name}
                           </span>
                           {isParent && (
-                            <span style={{ fontSize: 10, background: 'var(--primary-light)', color: 'var(--primary)', padding: '1px 7px', borderRadius: 10, fontWeight: 600 }}>
-                              Group
-                            </span>
+                            <span style={{ fontSize: 10, background: 'var(--primary-light)', color: 'var(--primary)', padding: '1px 7px', borderRadius: 10, fontWeight: 600 }}>Group</span>
                           )}
                         </div>
                         {menu.url && (
-                          <div style={{ fontSize: 11, color: 'var(--text-3)', fontFamily: 'var(--font-mono)', marginTop: 1 }}>
-                            {menu.url}
-                          </div>
+                          <div style={{ fontSize: 11, color: 'var(--text-3)', fontFamily: 'var(--font-mono)', marginTop: 1 }}>{menu.url}</div>
                         )}
                       </div>
-
-                      {/* Status tag */}
                       {checked && (
                         <span style={{ fontSize: 11, color: 'var(--primary)', fontWeight: 600, background: 'rgba(37,99,235,.12)', padding: '2px 8px', borderRadius: 8, flexShrink: 0 }}>
                           Allowed
@@ -458,67 +367,20 @@ export default function UserRoles() {
   );
 }
 
-// ── Permission panel styles ───────────────────────────────────
 const PS = {
-  overlay: {
-    position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)',
-    zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
-  },
-  panel: {
-    background: 'var(--white)', borderRadius: 16,
-    width: '90%', maxWidth: 620, maxHeight: '88vh',
-    display: 'flex', flexDirection: 'column', overflow: 'hidden',
-    boxShadow: '0 24px 64px rgba(0,0,0,.22)',
-  },
-  header: {
-    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-    padding: '18px 20px', borderBottom: '1px solid var(--border)',
-  },
-  roleIcon: {
-    width: 42, height: 42, borderRadius: 10,
-    background: 'var(--primary-light)', display: 'flex',
-    alignItems: 'center', justifyContent: 'center', fontSize: 20,
-  },
+  overlay: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 },
+  panel: { background: 'var(--white)', borderRadius: 16, width: '90%', maxWidth: 620, maxHeight: '88vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 24px 64px rgba(0,0,0,.22)' },
+  header: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 20px', borderBottom: '1px solid var(--border)' },
+  roleIcon: { width: 42, height: 42, borderRadius: 10, background: 'var(--primary-light)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20 },
   roleTitle: { fontWeight: 700, fontSize: 16, color: 'var(--text-1)' },
   roleSub:   { fontSize: 12, color: 'var(--text-3)', marginTop: 2 },
-  countBadge: {
-    display: 'flex', alignItems: 'center', gap: 4,
-    background: 'var(--bg)', border: '1px solid var(--border)',
-    borderRadius: 20, padding: '4px 12px', fontSize: 13,
-  },
-  closeBtn: {
-    width: 30, height: 30, border: '1px solid var(--border)',
-    borderRadius: 8, background: 'var(--bg)', cursor: 'pointer', fontSize: 13,
-  },
-  toolbar: {
-    display: 'flex', alignItems: 'center', gap: 8,
-    padding: '10px 16px', borderBottom: '1px solid var(--border)',
-    background: 'var(--bg)',
-  },
-  search: {
-    flex: 1, padding: '7px 12px', border: '1px solid var(--border)',
-    borderRadius: 8, fontSize: 13, outline: 'none', fontFamily: 'var(--font-sans)',
-  },
-  toolBtn: {
-    padding: '6px 12px', border: '1px solid var(--border)',
-    borderRadius: 8, background: 'var(--white)', fontSize: 12,
-    fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap',
-    fontFamily: 'var(--font-sans)',
-  },
+  countBadge: { display: 'flex', alignItems: 'center', gap: 4, background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 20, padding: '4px 12px', fontSize: 13 },
+  closeBtn: { width: 30, height: 30, border: '1px solid var(--border)', borderRadius: 8, background: 'var(--bg)', cursor: 'pointer', fontSize: 13 },
+  toolbar: { display: 'flex', alignItems: 'center', gap: 8, padding: '10px 16px', borderBottom: '1px solid var(--border)', background: 'var(--bg)' },
+  search: { flex: 1, padding: '7px 12px', border: '1px solid var(--border)', borderRadius: 8, fontSize: 13, outline: 'none', fontFamily: 'var(--font-sans)' },
+  toolBtn: { padding: '6px 12px', border: '1px solid var(--border)', borderRadius: 8, background: 'var(--white)', fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap', fontFamily: 'var(--font-sans)' },
   list: { flex: 1, overflowY: 'auto' },
-  menuRow: {
-    display: 'flex', alignItems: 'center', gap: 10,
-    padding: '10px 16px', borderBottom: '1px solid var(--border-light)',
-    cursor: 'pointer', transition: 'background .12s', userSelect: 'none',
-  },
-  checkbox: {
-    width: 20, height: 20, borderRadius: 5,
-    border: '1.5px solid', flexShrink: 0,
-    display: 'flex', alignItems: 'center', justifyContent: 'center',
-    transition: 'all .15s',
-  },
-  footer: {
-    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-    padding: '12px 20px', borderTop: '1px solid var(--border)', background: 'var(--bg)',
-  },
+  menuRow: { display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px', borderBottom: '1px solid var(--border-light)', cursor: 'pointer', transition: 'background .12s', userSelect: 'none' },
+  checkbox: { width: 20, height: 20, borderRadius: 5, border: '1.5px solid', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all .15s' },
+  footer: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 20px', borderTop: '1px solid var(--border)', background: 'var(--bg)' },
 };
