@@ -39,8 +39,8 @@ export default function UserRoles() {
   // Permission panel state
   const [permRole,    setPermRole]    = useState(null);   // role object
   // Branch selector inside permissions panel
-  const [branches,      setBranches]      = useState([]);   // [{company_unique_id, name}]
-  const [selectedBranchCid, setSelectedBranchCid] = useState('all'); // 'all' or a cid
+  const [branches,         setBranches]         = useState([]);  // [{company_unique_id, name}]
+  const [selectedBranchIds, setSelectedBranchIds] = useState(new Set()); // Set of cids; empty = all
   const [allMenus,    setAllMenus]    = useState([]);     // flat menu list
   const [mappings,    setMappings]    = useState([]);     // existing userrolemappings for this role
   const [permLoading, setPermLoading] = useState(false);
@@ -70,7 +70,7 @@ export default function UserRoles() {
     setModal('permissions');
     setPermLoading(true);
     setSearchMenu('');
-    setSelectedBranchCid('all');
+    setSelectedBranchIds(new Set()); // empty = all branches
     // Load child branches so admin can scope the permission per branch
     try {
       const branchList = await invNodeAPI.getBranches(cid);
@@ -100,15 +100,23 @@ export default function UserRoles() {
   };
 
   // ── Helper: which company_unique_ids to write for current branch selection ──
-  const targetCids = () => {
-    if (selectedBranchCid === 'all') {
-      // All branches: current company + every child branch
-      const childCids = branches.map(b => Number(b.company_unique_id));
-      const allCids = [Number(cid), ...childCids.filter(c => c !== Number(cid))];
-      return [...new Set(allCids)];
-    }
-    return [Number(selectedBranchCid)];
+  const allBranchCids = () => {
+    const childCids = branches.map(b => Number(b.company_unique_id));
+    return [...new Set([Number(cid), ...childCids])];
   };
+  const targetCids = () => {
+    // If nothing selected → means ALL
+    if (selectedBranchIds.size === 0) return allBranchCids();
+    return [...selectedBranchIds];
+  };
+  const toggleBranchId = (id) => {
+    setSelectedBranchIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+  const isAllSelected = selectedBranchIds.size === 0;
 
   // ── Toggle a menu permission ──────────────────────────────
   const toggleMenu = async (menuItem) => {
@@ -297,24 +305,63 @@ export default function UserRoles() {
 
             {/* Branch selector + Toolbar */}
             {branches.length > 0 && (
-              <div style={{ padding: '8px 16px', borderBottom: '1px solid var(--border)', background: 'var(--bg)', display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-3)', whiteSpace: 'nowrap' }}>APPLY TO</span>
-                <select
-                  value={selectedBranchCid}
-                  onChange={e => setSelectedBranchCid(e.target.value)}
-                  style={{ flex: 1, padding: '6px 10px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 13, fontFamily: 'var(--font-sans)', background: 'var(--white)' }}
-                >
-                  <option value="all">🏢 All branches (insert for each)</option>
-                  <option value={cid}>🏭 {selectedCompany?.name} (this company)</option>
+              <div style={{ padding: '8px 14px', borderBottom: '1px solid var(--border)', background: 'var(--bg)' }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-3)', marginBottom: 6, letterSpacing: '0.05em' }}>
+                  APPLY TO — select one or more branches
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {/* ALL pill */}
+                  <button
+                    onClick={() => setSelectedBranchIds(new Set())}
+                    style={{
+                      padding: '4px 12px', borderRadius: 99, fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                      border: `1.5px solid ${isAllSelected ? 'var(--primary)' : 'var(--border)'}`,
+                      background: isAllSelected ? 'var(--primary)' : 'var(--white)',
+                      color: isAllSelected ? '#fff' : 'var(--text-2)',
+                    }}
+                  >
+                    🏢 All branches
+                  </button>
+                  {/* Parent company pill */}
+                  {(() => {
+                    const id = Number(cid);
+                    const sel = selectedBranchIds.has(id);
+                    return (
+                      <button key={id} onClick={() => toggleBranchId(id)} style={{
+                        padding: '4px 12px', borderRadius: 99, fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                        border: `1.5px solid ${sel ? 'var(--primary)' : 'var(--border)'}`,
+                        background: sel ? 'var(--primary-light)' : 'var(--white)',
+                        color: sel ? 'var(--primary)' : 'var(--text-2)',
+                      }}>
+                        🏭 {selectedCompany?.name}
+                      </button>
+                    );
+                  })()}
+                  {/* Child branch pills */}
                   {branches
                     .filter(b => Number(b.company_unique_id) !== Number(cid))
-                    .map(b => (
-                      <option key={b.company_unique_id} value={b.company_unique_id}>
-                        🏪 {b.name}
-                      </option>
-                    ))
+                    .map(b => {
+                      const id = Number(b.company_unique_id);
+                      const sel = selectedBranchIds.has(id);
+                      return (
+                        <button key={id} onClick={() => toggleBranchId(id)} style={{
+                          padding: '4px 12px', borderRadius: 99, fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                          border: `1.5px solid ${sel ? 'var(--primary)' : 'var(--border)'}`,
+                          background: sel ? 'var(--primary-light)' : 'var(--white)',
+                          color: sel ? 'var(--primary)' : 'var(--text-2)',
+                        }}>
+                          🏪 {b.name}
+                        </button>
+                      );
+                    })
                   }
-                </select>
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 5 }}>
+                  {isAllSelected
+                    ? `✓ All ${allBranchCids().length} branches selected`
+                    : `✓ ${selectedBranchIds.size} branch${selectedBranchIds.size > 1 ? 'es' : ''} selected`
+                  }
+                </div>
               </div>
             )}
             {/* Toolbar */}
