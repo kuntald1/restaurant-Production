@@ -1073,11 +1073,22 @@ def reject_transfer(db: Session, transfer_id: int, rejected_by: str = None):
 def get_incoming_transfers(db: Session, to_node_id: int, company_unique_id: int):
     """
     Incoming transfers for a receiver node.
-    Filters by to_node_id only — company_unique_id is the parent company
-    so branch transfers (company_unique_id=1) are visible to branch receivers.
+    For company_unique_id=1 (parent/admin company), also include transfers
+    going to any inv_node owned by that company (e.g. WH node_id=1, CK node_id=2).
     """
+    from sqlalchemy import or_
+    # Get all inv_node ids owned by this company
+    owned_node_ids = [
+        r[0] for r in db.execute(
+            text("SELECT node_id FROM inv_node WHERE company_unique_id = :cid"),
+            {"cid": company_unique_id}
+        ).fetchall()
+    ]
+    # Always include the to_node_id itself (branch companies use their cid as node_id)
+    all_node_ids = list(set([to_node_id] + owned_node_ids))
+
     trs = db.query(StockTransfer).filter(
-        StockTransfer.to_node_id == to_node_id,
+        StockTransfer.to_node_id.in_(all_node_ids),
         StockTransfer.is_active == True,
     ).order_by(StockTransfer.transfer_date.desc()).all()
     for tr in trs:
