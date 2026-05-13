@@ -51,14 +51,22 @@ export default function Production() {
     if (!cid) return;
     setLoading(true);
     try {
-      const [e, it, u] = await Promise.allSettled([
+      const [e, it, u, cats] = await Promise.allSettled([
         productionAPI.getAll(cid),
         invItemAPI.getAll(cid),
         invUomAPI.getAll(cid),
+        invCategoryAPI.getAll(cid),
       ]);
+      const itemsData = it.status === 'fulfilled' ? (it.value || []) : [];
+      const catsData  = cats.status === 'fulfilled' ? (cats.value || []) : [];
+      // Enrich items with category_name for filtering
+      const enriched = itemsData.map(item => {
+        const cat = catsData.find(c => (c.category_id || c.item_category_id) === (item.item_category_id || item.category_id));
+        return { ...item, category_name: cat?.category_name || '' };
+      });
       setEntries(e.status === 'fulfilled' ? (e.value || []) : []);
-      setItems(it.status === 'fulfilled'  ? (it.value || []) : []);
-      setUoms(u.status === 'fulfilled'    ? (u.value || []) : []);
+      setItems(enriched);
+      setUoms(u.status === 'fulfilled' ? (u.value || []) : []);
     } catch {}
     setLoading(false);
   };
@@ -72,6 +80,24 @@ export default function Production() {
   };
 
   useEffect(() => { load(); loadRecipes(); }, [cid]);
+
+  // Only show Finished Goods category items in finished item dropdown
+  const finishedCatId = (() => {
+    // Find category named 'Finished Goods' (case-insensitive)
+    const cats = [];
+    // We'll derive from items — find items whose category_name includes 'finished'
+    return null; // resolved below via finishedItems
+  })();
+
+  const finishedItems = items.filter(i => {
+    const catName = (i.category_name || i.item_category_name || '').toLowerCase();
+    const catId   = i.item_category_id || i.category_id;
+    // Match by category name containing 'finished' OR by checking against known finished goods categories
+    return catName.includes('finish') || catName.includes('produced') || catName.includes('finished goods');
+  });
+
+  // If no finished goods category found yet, show all items as fallback
+  const finishedItemOptions = finishedItems.length > 0 ? finishedItems : items;
 
   const getItemName = id => items.find(i => i.item_id === id)?.item_name || `Item #${id}`;
   const getUomSymbol = id => { const u = uoms.find(u => u.uom_id === id); return u?.uom_symbol || u?.uom_name || ''; };
@@ -262,7 +288,7 @@ export default function Production() {
                   <select value={form.finished_item_id} onChange={e => setForm(p => ({ ...p, finished_item_id: e.target.value }))}
                     style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 13 }}>
                     <option value="">-- Select finished item --</option>
-                    {items.map(i => <option key={i.item_id} value={i.item_id}>{i.item_name}</option>)}
+                    {finishedItemOptions.map(i => <option key={i.item_id} value={i.item_id}>{i.item_name}</option>)}
                   </select>
                 ) : f.type === 'uomselect' ? (
                   <select value={form.yield_uom_id} onChange={e => setForm(p => ({ ...p, yield_uom_id: e.target.value }))}
