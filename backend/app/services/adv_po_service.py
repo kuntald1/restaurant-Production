@@ -16,13 +16,13 @@ import logging
 from datetime import date, datetime, timedelta
 from typing import Optional
 
-import httpx
+import requests
 from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
 from app.models.inventory_models import (
     AdvWeatherRule, AdvOccasion, AdvOccasionRule, AdvBranchOccasion,
-    AdvPoSuggestion, AdvAccuracyLog, InvItem, ItemCategory,
+    AdvPoSuggestion, AdvAccuracyLog, InventoryItem, ItemCategory,
 )
 from app.models.company_model import Company
 
@@ -94,7 +94,7 @@ def fetch_weather(lat: float, lng: float) -> dict:
     """Fetch tomorrow's weather forecast. Returns dict with temp, rain_prob."""
     try:
         url = f"{OPENWEATHER_URL}?lat={lat}&lon={lng}&appid={OPENWEATHER_API_KEY}&units=metric&cnt=8"
-        resp = httpx.get(url, timeout=10)
+        resp = requests.get(url, timeout=10)
         resp.raise_for_status()
         data = resp.json()
         # Get tomorrow's daytime forecast (entry closest to noon tomorrow)
@@ -375,7 +375,7 @@ def compute_accuracy(db: Session, company_id: int, days_back: int = 14) -> list[
             log.variance_pct    = round(variance, 2)
             log.rule_correction = rec_multiplier
 
-        item = db.query(InvItem).filter_by(item_id=s.item_id).first()
+        item = db.query(InventoryItem).filter_by(item_id=s.item_id).first()
         report.append({
             "log_id":          log.log_id if log.log_id else None,
             "item_id":         s.item_id,

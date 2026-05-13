@@ -171,11 +171,11 @@ def generate_suggestions(
 @router.get("/suggestions/{po_id}")
 def get_suggestions(po_id: int, db: Session = Depends(get_db)):
     """Get existing suggestions for a PO."""
-    from app.models.inventory_models import AdvPoSuggestion, InvItem
+    from app.models.inventory_models import AdvPoSuggestion, InventoryItem
     rows = db.query(AdvPoSuggestion).filter_by(po_id=po_id).all()
     result = []
     for s in rows:
-        item = db.query(InvItem).filter_by(item_id=s.item_id).first()
+        item = db.query(InventoryItem).filter_by(item_id=s.item_id).first()
         weather = {}
         try:
             weather = __import__('json').loads(s.weather_data) if s.weather_data else {}
