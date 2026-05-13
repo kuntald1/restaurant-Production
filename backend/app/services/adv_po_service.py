@@ -227,6 +227,7 @@ def generate_suggestions(db: Session, company_id: int, node_id: int, po_id: int,
         FROM inv_purchase_order_item poi
         JOIN inv_item ii ON ii.item_id = poi.item_id
         WHERE poi.po_id = :po_id
+          AND poi.is_active = TRUE
     """), {"po_id": po_id}).fetchall()
 
     suggestions = []
