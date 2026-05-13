@@ -244,7 +244,7 @@ def generate_suggestions(db: Session, company_id: int, node_id: int, po_id: int,
         w_mult = _weather_multiplier_for_category(db, company_id, weather, category_id)
         o_mult = _occasion_multiplier_for_category(db, occasion_ids, category_id)
         final  = round(w_mult * o_mult, 3)
-        sugg   = round(base_qty * final, 3)
+        sugg   = round(base_qty * final)  # round to whole number
 
         # Build reason string
         reason_parts = []
