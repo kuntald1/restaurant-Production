@@ -60,16 +60,36 @@ const CARD = {
   padding: '18px 20px',
 };
 
-// Solid icon badge — white icon on vivid color (like reference images)
+// Icon map — emoji that definitely render everywhere
+const ICON_MAP = {
+  'box':                '📦',
+  'map-pin':            '📍',
+  'alert-triangle':     '⚠️',
+  'alert-circle':       '🔔',
+  'circle-check':       '✅',
+  'building-warehouse': '🏭',
+  'building-store':     '🏪',
+  'package':            '📦',
+  'arrow-bar-to-down':  '📥',
+  'arrows-transfer-up': '🔄',
+  'arrow-bar-up':       '📤',
+  'users':              '👥',
+  'currency-rupee':     '💰',
+  'cloud':              '☁️',
+};
+
+// Solid icon badge with emoji
 function IB({ color, icon, size = 38 }) {
+  const emoji = ICON_MAP[icon] || '📦';
   return (
     <div style={{
       width: size, height: size, borderRadius: 10,
       background: color,
       display: 'flex', alignItems: 'center', justifyContent: 'center',
-      flexShrink: 0,
+      flexShrink: 0, fontSize: Math.round(size * 0.46),
+      lineHeight: 1,
     }}>
-      <i className={`ti ti-${icon}`} style={{ color: '#fff', fontSize: size * 0.44 }} aria-hidden="true" />
+      {emoji}
     </div>
   );
 }
@@ -108,7 +128,7 @@ function ItemCard({ b, itemName, uomSymbol, nodeName, reorder }) {
   const s      = STATUS[status];
   return (
     <div style={{ ...CARD, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12, borderLeft: `3px solid ${s.solid}` }}>
-      <IB color={s.solid} icon="package" size={36} />
+      <div style={{ width: 36, height: 36, borderRadius: 9, background: s.light, border: '2px solid ' + s.border, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, flexShrink: 0 }}>📦</div>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text-primary)', marginBottom: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{itemName}</div>
         <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)', marginBottom: 8 }}>{nodeName}</div>
@@ -205,18 +225,20 @@ export default function InvReports() {
     const feed = [];
     grnData.filter(g => g.status === 'posted').forEach(g => {
       const qty = (g.items || []).reduce((s, it) => s + parseFloat(it.received_qty || 0), 0);
-      feed.push({ label: 'GRN posted', sub: `${staticNodeName(g.node_id, nodesList)} · ${fmtDate(g.grn_date)}`, qty: `+${qty.toFixed(0)}`, color: PALETTE.green.solid, iconColor: PALETTE.green.solid, icon: 'arrow-bar-to-down', ts: new Date(g.grn_date) });
+      feed.push({ label: 'GRN posted', sub: `${staticNodeName(g.node_id, nodesList)} · ${fmtDate(g.grn_date)}`, qty: `+${qty.toFixed(0)}`, color: PALETTE.green.solid, lightBg: PALETTE.green.light, borderColor: PALETTE.green.border, emoji: '📥', ts: new Date(g.grn_date) });
     });
     transferData.forEach(t => {
       const qty  = (t.items || []).reduce((s, it) => s + parseFloat(it.requested_qty || 0), 0);
       const isOk = t.status === 'received';
       const isRj = t.status === 'rejected';
       const clr  = isOk ? PALETTE.green.solid : isRj ? PALETTE.red.solid : PALETTE.amber.solid;
-      feed.push({ label: isOk ? 'Transfer received' : isRj ? 'Transfer rejected' : 'Transfer dispatched', sub: fmtDate(t.transfer_date), qty: `${qty.toFixed(0)}`, color: clr, iconColor: clr, icon: 'arrows-transfer-up', ts: new Date(t.transfer_date) });
+      const lb   = isOk ? PALETTE.green.light : isRj ? PALETTE.red.light : PALETTE.amber.light;
+      const bc   = isOk ? PALETTE.green.border : isRj ? PALETTE.red.border : PALETTE.amber.border;
+      feed.push({ label: isOk ? 'Transfer received' : isRj ? 'Transfer rejected' : 'Transfer dispatched', sub: fmtDate(t.transfer_date), qty: `${qty.toFixed(0)}`, color: clr, lightBg: lb, borderColor: bc, emoji: '🔄', ts: new Date(t.transfer_date) });
     });
     consData.forEach(c => {
       const qty = (c.items || []).reduce((s, it) => s + parseFloat(it.qty_consumed || 0), 0);
-      feed.push({ label: 'Consumption posted', sub: fmtDate(c.consumption_date), qty: `-${qty.toFixed(0)}`, color: PALETTE.red.solid, iconColor: PALETTE.red.solid, icon: 'arrow-bar-up', ts: new Date(c.consumption_date) });
+      feed.push({ label: 'Consumption posted', sub: fmtDate(c.consumption_date), qty: `-${qty.toFixed(0)}`, color: PALETTE.red.solid, lightBg: PALETTE.red.light, borderColor: PALETTE.red.border, emoji: '📤', ts: new Date(c.consumption_date) });
     });
     feed.sort((a, b) => b.ts - a.ts);
     return feed.slice(0, 6);
@@ -449,17 +471,18 @@ export default function InvReports() {
                       {/* 4 hero stat cards */}
                       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0,1fr))', gap: 12, marginBottom: 24 }}>
                         {[
-                          { icon: 'box',            color: PALETTE.green.solid,  val: filteredBalance.length,                lbl: 'Total stock items',  trend: '+8.2%', up: true  },
-                          { icon: 'map-pin',         color: PALETTE.teal.solid,   val: Object.keys(balanceByNode).length,     lbl: 'Active nodes',       trend: '+12%',  up: true  },
-                          { icon: 'alert-triangle',  color: PALETTE.red.solid,    val: allLow,                                lbl: 'Low stock alerts',   trend: `+${allLow}`, up: false },
-                          { icon: 'alert-circle',    color: PALETTE.amber.solid,  val: allWarn,                               lbl: 'Near reorder',       trend: `+${allWarn}`, up: false },
+                          { emoji: '📦', accent: PALETTE.green.solid, lightBg: PALETTE.green.light, val: filteredBalance.length,            lbl: 'Total stock items', trend: '+8.2%', up: true  },
+                          { emoji: '📍', accent: PALETTE.teal.solid,  lightBg: PALETTE.teal.light,  val: Object.keys(balanceByNode).length, lbl: 'Active nodes',      trend: '+12%',  up: true  },
+                          { emoji: '⚠️', accent: PALETTE.red.solid,   lightBg: PALETTE.red.light,   val: allLow,                            lbl: 'Low stock alerts',  trend: '+' + allLow,  up: false },
+                          { emoji: '🔔', accent: PALETTE.amber.solid, lightBg: PALETTE.amber.light, val: allWarn,                           lbl: 'Near reorder',      trend: '+' + allWarn, up: false },
                         ].map((c, i) => (
-                          <div key={i} style={{ ...CARD }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-                              <IB color={c.color} icon={c.icon} size={40} />
-                              <span style={{ fontSize: 12, fontWeight: 600, color: c.up ? PALETTE.green.text : PALETTE.red.text, display: 'flex', alignItems: 'center', gap: 3 }}>
-                                <i className={`ti ti-trending-${c.up ? 'up' : 'down'}`} style={{ fontSize: 13 }} aria-hidden="true" />
-                                {c.trend}
+                          <div key={i} style={{ ...CARD, borderTop: '3px solid ' + c.accent }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+                              <div style={{ width: 36, height: 36, borderRadius: 9, background: c.lightBg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18 }}>
+                                {c.emoji}
+                              </div>
+                              <span style={{ fontSize: 12, fontWeight: 600, color: c.up ? PALETTE.green.text : PALETTE.red.text }}>
+                                {c.up ? '↑' : '↓'} {c.trend}
                               </span>
                             </div>
                             <div style={{ fontSize: 30, fontWeight: 700, color: 'var(--color-text-primary)', lineHeight: 1, marginBottom: 5 }}>{c.val}</div>
@@ -490,7 +513,7 @@ export default function InvReports() {
                                 onMouseLeave={e => e.currentTarget.style.boxShadow = 'none'}
                               >
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
-                                  <IB color={s.solid} icon={isWH ? 'building-warehouse' : 'building-store'} size={38} />
+                                  <div style={{ width: 38, height: 38, borderRadius: 10, background: s.solid, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, flexShrink: 0 }}>{isWH ? '🏭' : '🏪'}</div>
                                   <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                                     {counts.low  > 0 && <span style={{ fontSize: 10, fontWeight: 600, padding: '3px 8px', borderRadius: 99, background: STATUS.low.pillBg,  color: STATUS.low.pillText  }}>{counts.low} low</span>}
                                     {counts.warn > 0 && <span style={{ fontSize: 10, fontWeight: 600, padding: '3px 8px', borderRadius: 99, background: STATUS.warn.pillBg, color: STATUS.warn.pillText }}>{counts.warn} warn</span>}
@@ -504,7 +527,7 @@ export default function InvReports() {
                                     <div style={{ width: `${okPct}%`, height: '100%', background: s.barColor, borderRadius: 99 }} />
                                   </div>
                                   <span style={{ fontSize: 11, color: 'var(--color-text-secondary)', whiteSpace: 'nowrap' }}>{okPct}% ok</span>
-                                  <i className="ti ti-chevron-right" style={{ fontSize: 14, color: 'var(--color-text-tertiary)' }} aria-hidden="true" />
+                                  ›
                                 </div>
                               </div>
                             );
@@ -527,7 +550,7 @@ export default function InvReports() {
 
                           {lowStock.length === 0 ? (
                             <div style={{ textAlign: 'center', padding: '24px 0' }}>
-                              <IB color={PALETTE.green.solid} icon="circle-check" size={44} />
+                              <div style={{ fontSize: 44, textAlign: 'center' }}>✅</div>
                               <div style={{ fontSize: 13, color: 'var(--color-text-secondary)', marginTop: 10 }}>All stock levels healthy</div>
                             </div>
                           ) : (
@@ -540,7 +563,7 @@ export default function InvReports() {
                               const fillPct = reorder > 0 ? Math.min(100, (onHand / (reorder * 1.5)) * 100) : 5;
                               return (
                                 <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 0', borderTop: idx === 0 ? 'none' : '1px solid var(--color-border-tertiary)' }}>
-                                  <IB color={s.solid} icon="package" size={36} />
+                                  <div style={{ width: 36, height: 36, borderRadius: 9, background: s.light, border: '2px solid ' + s.border, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, flexShrink: 0 }}>📦</div>
                                   <div style={{ flex: 1, minWidth: 0 }}>
                                     <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                       {l.item_name || getItemName(l.item_id)}
@@ -576,7 +599,7 @@ export default function InvReports() {
                           ) : (
                             activity.map((a, idx) => (
                               <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 0', borderTop: idx === 0 ? 'none' : '1px solid var(--color-border-tertiary)' }}>
-                                <IB color={a.iconColor} icon={a.icon} size={36} />
+                                <div style={{ width: 36, height: 36, borderRadius: 9, background: a.lightBg, border: '2px solid ' + a.borderColor, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, flexShrink: 0 }}>{a.emoji}</div>
                                 <div style={{ flex: 1, minWidth: 0 }}>
                                   <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.label}</div>
                                   <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>{a.sub}</div>
@@ -602,14 +625,14 @@ export default function InvReports() {
                         return (
                           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0,1fr))', gap: 12, marginBottom: 24 }}>
                             {[
-                              { icon: 'box',           color: PALETTE.green.solid, val: drillNodeBalance.length, lbl: 'Items in node' },
-                              { icon: 'alert-triangle', color: PALETTE.red.solid,   val: c.low,  lbl: 'Low stock'   },
-                              { icon: 'alert-circle',   color: PALETTE.amber.solid, val: c.warn, lbl: 'Near ROL'    },
-                              { icon: 'circle-check',   color: PALETTE.green.solid, val: c.ok,   lbl: 'Healthy'     },
+                              { emoji: '📦', accent: PALETTE.green.solid, lightBg: PALETTE.green.light, val: drillNodeBalance.length, lbl: 'Items in node' },
+                              { emoji: '⚠️', accent: PALETTE.red.solid,   lightBg: PALETTE.red.light,   val: c.low,  lbl: 'Low stock'   },
+                              { emoji: '🔔', accent: PALETTE.amber.solid, lightBg: PALETTE.amber.light, val: c.warn, lbl: 'Near ROL'    },
+                              { emoji: '✅', accent: PALETTE.green.solid, lightBg: PALETTE.green.light, val: c.ok,   lbl: 'Healthy'     },
                             ].map((s, i) => (
-                              <div key={i} style={{ ...CARD }}>
-                                <IB color={s.color} icon={s.icon} size={38} />
-                                <div style={{ fontSize: 28, fontWeight: 700, color: 'var(--color-text-primary)', lineHeight: 1, marginTop: 14, marginBottom: 4 }}>{s.val}</div>
+                              <div key={i} style={{ ...CARD, borderTop: '3px solid ' + s.accent }}>
+                                <div style={{ width: 36, height: 36, borderRadius: 9, background: s.lightBg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, marginBottom: 12 }}>{s.emoji}</div>
+                                <div style={{ fontSize: 28, fontWeight: 700, color: 'var(--color-text-primary)', lineHeight: 1, marginBottom: 4 }}>{s.val}</div>
                                 <div style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>{s.lbl}</div>
                               </div>
                             ))}
@@ -641,7 +664,7 @@ export default function InvReports() {
                                   <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--color-text-primary)' }}>
                                     {getCatName(catId === 'none' ? null : catId)}
                                   </div>
-                                  <i className="ti ti-chevron-right" style={{ fontSize: 16, color: 'var(--color-text-tertiary)' }} aria-hidden="true" />
+                                  ›
                                 </div>
                                 <div style={{ display: 'flex', gap: 10 }}>
                                   {[
@@ -674,13 +697,13 @@ export default function InvReports() {
                           <>
                             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0,1fr))', gap: 12, marginBottom: 20 }}>
                               {[
-                                { icon: 'box',           color: PALETTE.green.solid, val: drillCatItems.length, lbl: 'Total'   },
-                                { icon: 'alert-triangle', color: PALETTE.red.solid,   val: c.low,               lbl: 'Low'     },
-                                { icon: 'alert-circle',   color: PALETTE.amber.solid, val: c.warn,              lbl: 'Near ROL'},
-                                { icon: 'circle-check',   color: PALETTE.green.solid, val: c.ok,                lbl: 'Healthy' },
+                                { emoji: '📦', accent: PALETTE.green.solid, lightBg: PALETTE.green.light, val: drillCatItems.length, lbl: 'Total'    },
+                                { emoji: '⚠️', accent: PALETTE.red.solid,   lightBg: PALETTE.red.light,   val: c.low,               lbl: 'Low'      },
+                                { emoji: '🔔', accent: PALETTE.amber.solid, lightBg: PALETTE.amber.light, val: c.warn,              lbl: 'Near ROL' },
+                                { emoji: '✅', accent: PALETTE.green.solid, lightBg: PALETTE.green.light, val: c.ok,                lbl: 'Healthy'  },
                               ].map((s, i) => (
                                 <div key={i} style={{ ...CARD, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
-                                  <IB color={s.color} icon={s.icon} size={36} />
+                                  <div style={{ width: 36, height: 36, borderRadius: 9, background: s.lightBg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, flexShrink: 0 }}>{s.emoji}</div>
                                   <div>
                                     <div style={{ fontSize: 24, fontWeight: 700, color: 'var(--color-text-primary)', lineHeight: 1 }}>{s.val}</div>
                                     <div style={{ fontSize: 11, color: 'var(--color-text-secondary)', marginTop: 3 }}>{s.lbl}</div>
@@ -708,7 +731,7 @@ export default function InvReports() {
                 Object.entries(balanceByNode).map(([nodeId, rows]) => (
                   <div key={nodeId} style={{ marginBottom: 20 }}>
                     <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 10, color: PALETTE.green.solid, display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <i className="ti ti-map-pin" aria-hidden="true" /> {getNodeName(parseInt(nodeId))}
+                      📍 {getNodeName(parseInt(nodeId))}
                       <span style={{ fontWeight: 400, color: 'var(--color-text-tertiary)', fontSize: 12 }}>{rows.length} item(s)</span>
                     </div>
                     <div className="table-wrapper">
@@ -795,12 +818,12 @@ export default function InvReports() {
                 <>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0,1fr))', gap: 14, marginBottom: 22 }}>
                     {[
-                      { icon: 'users',          color: PALETTE.teal.solid,  val: outstanding.length,                                                                                             lbl: 'Total suppliers'  },
-                      { icon: 'alert-circle',   color: PALETTE.amber.solid, val: outstanding.filter(o => parseFloat(o.outstanding) > 0).length,                                                  lbl: 'With outstanding' },
-                      { icon: 'currency-rupee', color: PALETTE.red.solid,   val: `₹${outstanding.reduce((s, o) => s + Math.max(0, parseFloat(o.outstanding)), 0).toFixed(2)}`,                  lbl: 'Total due'        },
+                      { emoji: '👥', accent: PALETTE.teal.solid,  lightBg: PALETTE.teal.light,  val: outstanding.length,                                                                                             lbl: 'Total suppliers'  },
+                      { emoji: '🔔', accent: PALETTE.amber.solid, lightBg: PALETTE.amber.light, val: outstanding.filter(o => parseFloat(o.outstanding) > 0).length,                                                  lbl: 'With outstanding' },
+                      { emoji: '💰', accent: PALETTE.red.solid,   lightBg: PALETTE.red.light,   val: `₹${outstanding.reduce((s, o) => s + Math.max(0, parseFloat(o.outstanding)), 0).toFixed(2)}`,                  lbl: 'Total due'        },
                     ].map((c, i) => (
-                      <div key={i} style={{ ...CARD, display: 'flex', gap: 14, alignItems: 'center' }}>
-                        <IB color={c.color} icon={c.icon} size={40} />
+                      <div key={i} style={{ ...CARD, borderTop: '3px solid ' + c.accent, display: 'flex', gap: 14, alignItems: 'center' }}>
+                        <div style={{ width: 40, height: 40, borderRadius: 10, background: c.lightBg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, flexShrink: 0 }}>{c.emoji}</div>
                         <div>
                           <div style={{ fontWeight: 700, fontSize: 22, color: 'var(--color-text-primary)', lineHeight: 1 }}>{c.val}</div>
                           <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginTop: 5 }}>{c.lbl}</div>
