@@ -208,6 +208,21 @@ export default function InvReports() {
   const isChildBranch   = !isSuperAdmin && !!myParentId && Number(myParentId) !== 0;
   const isParentCompany = !isSuperAdmin && (!myParentId || Number(myParentId) === 0);
 
+  // rootCid: the top-level company that OWNS all inventory data.
+  // Child branches store stock under the root parent's company_unique_id.
+  // Walk up allCompanies to find the true root (no parent or parent=0).
+  const rootCid = useMemo(() => {
+    if (!isChildBranch || !myParentId) return cid;
+    const allCo = allCompanies || [];
+    // Direct parent
+    const parentCo = allCo.find(c => Number(c.company_unique_id) === Number(myParentId));
+    // If parent also has a parent, go one level higher
+    if (parentCo?.parant_company_unique_id && Number(parentCo.parant_company_unique_id) !== 0) {
+      return parentCo.parant_company_unique_id;
+    }
+    return myParentId;
+  }, [isChildBranch, myParentId, cid, allCompanies]);
+
 
   const [tab,         setTab]         = useState('balance');
   // Child branch: default filter to their own node so data loads correctly
@@ -259,14 +274,16 @@ export default function InvReports() {
   const load = async () => {
     if (!cid) return;
     setLoading(true);
+    // Child branches: all inventory data is stored under the root parent company
+    const apiCid = rootCid || cid;
     try {
       const [iR, lsR, catsR, grnsR, trR, consR] = await Promise.allSettled([
-        invItemAPI.getAll(cid),
-        invStockAPI.getLowStock(cid),
-        invCategoryAPI.getAll(cid),
-        invGrnAPI.getAll(cid),
-        invTransferAPI.getAllAdmin(cid),
-        invConsumptionAPI.getAll(cid),
+        invItemAPI.getAll(apiCid),
+        invStockAPI.getLowStock(apiCid),
+        invCategoryAPI.getAll(apiCid),
+        invGrnAPI.getAll(apiCid),
+        invTransferAPI.getAllAdmin(apiCid),
+        invConsumptionAPI.getAll(apiCid),
       ]);
       const itemsData    = iR.status    === 'fulfilled' ? (iR.value    || []) : [];
       const grnData      = grnsR.status === 'fulfilled' ? (grnsR.value || []) : [];
@@ -284,8 +301,13 @@ export default function InvReports() {
     if (!cid) return;
     setLoading(true);
     try {
-      const nodeInt = filterNode ? parseInt(String(filterNode).replace('b_', '')) : null;
-      setBalance((await invStockAPI.getBalance(cid, nodeInt)) || []);
+      // Child branch: fetch balance from root company, filtered to their node_id
+      const apiCid  = rootCid || cid;
+      // For child branch: always filter to their own node (company_unique_id = cid)
+      const nodeInt = isChildBranch
+        ? Number(cid)  // their node_id equals their company_unique_id
+        : (filterNode ? parseInt(String(filterNode).replace('b_', '')) : null);
+      setBalance((await invStockAPI.getBalance(apiCid, nodeInt)) || []);
     } catch { setBalance([]); }
     setLoading(false);
   };
@@ -294,7 +316,9 @@ export default function InvReports() {
     if (!cid) return;
     setLoading(true);
     try {
-      setMovement((await invReportsAPI.stockMovement(cid, { from_date: fromDate, to_date: toDate, node_id: filterNode || null })) || []);
+      const mvApiCid  = rootCid || cid;
+      const mvNodeId  = isChildBranch ? cid : (filterNode ? parseInt(String(filterNode).replace('b_','')) : null);
+      setMovement((await invReportsAPI.stockMovement(mvApiCid, { from_date: fromDate, to_date: toDate, node_id: mvNodeId })) || []);
     } catch { setMovement([]); }
     setLoading(false);
   };
@@ -302,7 +326,7 @@ export default function InvReports() {
   const loadOutstanding = async () => {
     if (!cid) return;
     setLoading(true);
-    try { setOutstanding((await invReportsAPI.supplierOutstanding(cid)) || []); }
+    try { setOutstanding((await invReportsAPI.supplierOutstanding(rootCid || cid)) || []); }
     catch { setOutstanding([]); }
     setLoading(false);
   };
@@ -399,8 +423,15 @@ export default function InvReports() {
   // Scope low/warn counts to visible nodes only
   const visibleBalance = useMemo(() => {
     if (isSuperAdmin || isParentCompany) return filteredBalance;
+    // Child branch: only show their own node (node_id === their cid)
     return filteredBalance.filter(b => String(b.node_id).replace('b_', '') === String(cid));
   }, [filteredBalance, isSuperAdmin, isParentCompany, cid]);
+
+  // Low stock scoped to visible nodes
+  const visibleLowStock = useMemo(() => {
+    if (isSuperAdmin || isParentCompany) return lowStock;
+    return lowStock.filter(l => String(l.node_id).replace('b_','') === String(cid));
+  }, [lowStock, isSuperAdmin, isParentCompany, cid]);
 
   const allLow  = visibleBalance.filter(b => getStatus(parseFloat(b.qty_on_hand), getItemReorder(b.item_id)) === 'low').length;
   const allWarn = visibleBalance.filter(b => getStatus(parseFloat(b.qty_on_hand), getItemReorder(b.item_id)) === 'warn').length;
@@ -590,7 +621,7 @@ export default function InvReports() {
                         <div style={{ ...CARD }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
                             <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-text-primary)' }}>Low stock alerts</div>
-                            {lowStock.length > 0 && (
+                            {visibleLowStock.length > 0 && (
                               <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 99, background: STATUS.low.pillBg, color: STATUS.low.pillText }}>
                                 {lowStock.length} item{lowStock.length !== 1 ? 's' : ''}
                               </span>
@@ -603,7 +634,7 @@ export default function InvReports() {
                               <div style={{ fontSize: 13, color: 'var(--color-text-secondary)', marginTop: 10 }}>All stock levels healthy</div>
                             </div>
                           ) : (
-                            lowStock.slice(0, 5).map((l, idx) => {
+                            visibleLowStock.slice(0, 5).map((l, idx) => {
                               const onHand  = parseFloat(l.qty_on_hand);
                               const reorder = parseFloat(l.reorder_level || getItemReorder(l.item_id));
                               const status  = getStatus(onHand, reorder);
@@ -630,9 +661,9 @@ export default function InvReports() {
                               );
                             })
                           )}
-                          {lowStock.length > 5 && (
+                          {visibleLowStock.length > 5 && (
                             <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)', textAlign: 'center', paddingTop: 10, borderTop: '1px solid var(--color-border-tertiary)' }}>
-                              +{lowStock.length - 5} more below reorder level
+                              +{visibleLowStock.length - 5} more below reorder level
                             </div>
                           )}
                         </div>
