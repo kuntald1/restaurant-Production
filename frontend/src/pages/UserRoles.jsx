@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { userRolesAPI, roleMappingAPI, menuAPI } from '../services/api';
+import { userRolesAPI, roleMappingAPI, menuAPI, invNodeAPI } from '../services/api';
 import { Table, Modal, Badge, Spinner, PageHeader, FormField, Input, Textarea, ConfirmDialog } from '../components/UI';
 import { useApp } from '../context/useApp';
 
@@ -38,6 +38,9 @@ export default function UserRoles() {
 
   // Permission panel state
   const [permRole,    setPermRole]    = useState(null);   // role object
+  // Branch selector inside permissions panel
+  const [branches,      setBranches]      = useState([]);   // [{company_unique_id, name}]
+  const [selectedBranchCid, setSelectedBranchCid] = useState('all'); // 'all' or a cid
   const [allMenus,    setAllMenus]    = useState([]);     // flat menu list
   const [mappings,    setMappings]    = useState([]);     // existing userrolemappings for this role
   const [permLoading, setPermLoading] = useState(false);
@@ -67,6 +70,13 @@ export default function UserRoles() {
     setModal('permissions');
     setPermLoading(true);
     setSearchMenu('');
+    setSelectedBranchCid('all');
+    // Load child branches so admin can scope the permission per branch
+    try {
+      const branchList = await invNodeAPI.getBranches(cid);
+      // branchList = [{company_unique_id, name, parant_company_unique_id, ...}]
+      setBranches(branchList || []);
+    } catch { setBranches([]); }
     try {
       const [menuTree, roleMaps] = await Promise.allSettled([
         // Menu TREE → has real names, urls, icons, parent structure
@@ -89,25 +99,46 @@ export default function UserRoles() {
     setPermLoading(false);
   };
 
+  // ── Helper: which company_unique_ids to write for current branch selection ──
+  const targetCids = () => {
+    if (selectedBranchCid === 'all') {
+      // All branches: current company + every child branch
+      const childCids = branches.map(b => Number(b.company_unique_id));
+      const allCids = [Number(cid), ...childCids.filter(c => c !== Number(cid))];
+      return [...new Set(allCids)];
+    }
+    return [Number(selectedBranchCid)];
+  };
+
   // ── Toggle a menu permission ──────────────────────────────
   const toggleMenu = async (menuItem) => {
-    const existing = mappings.find(m => m.menu_id === menuItem.id);
+    // checked = at least one mapping exists for this menu (any branch)
+    const existing = mappings.filter(m => m.menu_id === menuItem.id);
     setToggling(menuItem.id);
     try {
-      if (existing) {
-        // UNCHECK → soft delete
-        await roleMappingAPI.delete(existing.userrolemapping_id);
-        setMappings(prev => prev.filter(m => m.menu_id !== menuItem.id));
+      if (existing.length > 0) {
+        // UNCHECK → delete all mappings for this menu across selected cids
+        const cidsToRemove = targetCids();
+        const toDelete = existing.filter(m => cidsToRemove.includes(Number(m.company_unique_id)));
+        for (const m of toDelete) {
+          await roleMappingAPI.delete(m.userrolemapping_id);
+        }
+        const deletedIds = toDelete.map(m => m.userrolemapping_id);
+        setMappings(prev => prev.filter(m => !deletedIds.includes(m.userrolemapping_id)));
       } else {
-        // CHECK → create (backend now handles UPSERT — reactivates if soft-deleted)
-        const newMap = await roleMappingAPI.create({
-          userrole_id:       permRole.userrole_id,
-          menu_id:           menuItem.id,
-          company_unique_id: cid,
-          is_active:         true,
-          created_by:        1,
-        });
-        setMappings(prev => [...prev, newMap]);
+        // CHECK → create one row per selected cid
+        const newMaps = [];
+        for (const companyId of targetCids()) {
+          const newMap = await roleMappingAPI.create({
+            userrole_id:       permRole.userrole_id,
+            menu_id:           menuItem.id,
+            company_unique_id: companyId,
+            is_active:         true,
+            created_by:        user?.user_id || 1,
+          });
+          newMaps.push(newMap);
+        }
+        setMappings(prev => [...prev, ...newMaps]);
       }
     } catch (e) { showToast(e.message, 'error'); }
     setToggling(null);
@@ -115,21 +146,29 @@ export default function UserRoles() {
 
   // Select All / Deselect All
   const selectAll = async () => {
-    const unselected = filtered.filter(m => !mappings.find(x => x.menu_id === m.id));
+    const cidsToUse = targetCids();
+    const unselected = filtered.filter(m =>
+      !mappings.find(x => x.menu_id === m.id && cidsToUse.includes(Number(x.company_unique_id)))
+    );
     for (const m of unselected) {
-      try {
-        const newMap = await roleMappingAPI.create({
-          userrole_id: permRole.userrole_id, menu_id: m.id,
-          company_unique_id: cid, is_active: true, created_by: 1,
-        });
-        setMappings(prev => [...prev, newMap]);
-      } catch {}
+      for (const companyId of cidsToUse) {
+        try {
+          const newMap = await roleMappingAPI.create({
+            userrole_id: permRole.userrole_id, menu_id: m.id,
+            company_unique_id: companyId, is_active: true, created_by: user?.user_id || 1,
+          });
+          setMappings(prev => [...prev, newMap]);
+        } catch {}
+      }
     }
     showToast('All menus selected!');
   };
 
   const deselectAll = async () => {
-    const selected = mappings.filter(m => filtered.find(f => f.id === m.menu_id));
+    const cidsToUse = targetCids();
+    const selected = mappings.filter(m =>
+      filtered.find(f => f.id === m.menu_id) && cidsToUse.includes(Number(m.company_unique_id))
+    );
     for (const m of selected) {
       try {
         await roleMappingAPI.delete(m.userrolemapping_id);
@@ -256,6 +295,28 @@ export default function UserRoles() {
               <div style={{ height: '100%', width: `${totalCount ? (checkedCount / totalCount) * 100 : 0}%`, background: 'var(--primary)', transition: 'width .3s', borderRadius: 2 }} />
             </div>
 
+            {/* Branch selector + Toolbar */}
+            {branches.length > 0 && (
+              <div style={{ padding: '8px 16px', borderBottom: '1px solid var(--border)', background: 'var(--bg)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-3)', whiteSpace: 'nowrap' }}>APPLY TO</span>
+                <select
+                  value={selectedBranchCid}
+                  onChange={e => setSelectedBranchCid(e.target.value)}
+                  style={{ flex: 1, padding: '6px 10px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 13, fontFamily: 'var(--font-sans)', background: 'var(--white)' }}
+                >
+                  <option value="all">🏢 All branches (insert for each)</option>
+                  <option value={cid}>🏭 {selectedCompany?.name} (this company)</option>
+                  {branches
+                    .filter(b => Number(b.company_unique_id) !== Number(cid))
+                    .map(b => (
+                      <option key={b.company_unique_id} value={b.company_unique_id}>
+                        🏪 {b.name}
+                      </option>
+                    ))
+                  }
+                </select>
+              </div>
+            )}
             {/* Toolbar */}
             <div style={PS.toolbar}>
               <input
