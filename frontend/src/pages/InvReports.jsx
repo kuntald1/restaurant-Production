@@ -195,8 +195,19 @@ function LevelStepper({ current }) {
 // MAIN COMPONENT
 // ══════════════════════════════════════════════════════════════
 export default function InvReports() {
-  const { selectedCompany, allCompanies } = useApp();
+  const { selectedCompany, allCompanies, user } = useApp();
   const cid = selectedCompany?.company_unique_id;
+
+  // ── Role & visibility ─────────────────────────────────────
+  // isSuperAdmin: global admin, sees everything
+  // isParentCompany: company with no parent (parant_company_unique_id = 0 or null)
+  //   → sees their WH/CK nodes + all child branches
+  // isChildBranch: has a parent → sees ONLY their own branch node
+  const isSuperAdmin    = !!user?.is_super_admin;
+  const myParentId      = selectedCompany?.parant_company_unique_id;
+  const isChildBranch   = !isSuperAdmin && !!myParentId && Number(myParentId) !== 0;
+  const isParentCompany = !isSuperAdmin && (!myParentId || Number(myParentId) === 0);
+
 
   const [tab,         setTab]         = useState('balance');
   const [filterNode,  setFilterNode]  = useState('');
@@ -335,6 +346,23 @@ export default function InvReports() {
     return map;
   }, [filteredBalance]);
 
+  // Filter balanceByNode based on role:
+  //   super admin / parent company → all nodes
+  //   child branch → only their own node (node_id matches their cid with b_ prefix)
+  const visibleBalanceByNode = useMemo(() => {
+    if (isSuperAdmin || isParentCompany) return balanceByNode;
+    // Child branch: only show their own company node (stored as b_{cid})
+    const myNodeKey = String(cid);
+    const result = {};
+    Object.entries(balanceByNode).forEach(([nodeId, rows]) => {
+      const normalized = String(nodeId).replace('b_', '');
+      if (normalized === String(cid) || String(nodeId) === myNodeKey) {
+        result[nodeId] = rows;
+      }
+    });
+    return result;
+  }, [balanceByNode, isSuperAdmin, isParentCompany, isChildBranch, cid]);
+
   const drillNodeBalance = useMemo(() => {
     if (!drillNode) return [];
     const ns = String(drillNode).replace('b_', '');
@@ -358,8 +386,14 @@ export default function InvReports() {
       });
   }, [drillNodeBalance, drillCat, items]);
 
-  const allLow  = filteredBalance.filter(b => getStatus(parseFloat(b.qty_on_hand), getItemReorder(b.item_id)) === 'low').length;
-  const allWarn = filteredBalance.filter(b => getStatus(parseFloat(b.qty_on_hand), getItemReorder(b.item_id)) === 'warn').length;
+  // Scope low/warn counts to visible nodes only
+  const visibleBalance = useMemo(() => {
+    if (isSuperAdmin || isParentCompany) return filteredBalance;
+    return filteredBalance.filter(b => String(b.node_id).replace('b_', '') === String(cid));
+  }, [filteredBalance, isSuperAdmin, isParentCompany, cid]);
+
+  const allLow  = visibleBalance.filter(b => getStatus(parseFloat(b.qty_on_hand), getItemReorder(b.item_id)) === 'low').length;
+  const allWarn = visibleBalance.filter(b => getStatus(parseFloat(b.qty_on_hand), getItemReorder(b.item_id)) === 'warn').length;
 
   const movementSummary = {};
   movement.forEach(m => {
@@ -471,8 +505,8 @@ export default function InvReports() {
                       {/* 4 hero stat cards */}
                       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0,1fr))', gap: 12, marginBottom: 24 }}>
                         {[
-                          { emoji: '📦', accent: PALETTE.green.solid, lightBg: PALETTE.green.light, val: filteredBalance.length,            lbl: 'Total stock items', trend: '+8.2%', up: true  },
-                          { emoji: '📍', accent: PALETTE.teal.solid,  lightBg: PALETTE.teal.light,  val: Object.keys(balanceByNode).length, lbl: 'Active nodes',      trend: '+12%',  up: true  },
+                          { emoji: '📦', accent: PALETTE.green.solid, lightBg: PALETTE.green.light, val: visibleBalance.length,             lbl: 'Total stock items', trend: '+8.2%', up: true  },
+                          { emoji: '📍', accent: PALETTE.teal.solid,  lightBg: PALETTE.teal.light,  val: Object.keys(visibleBalanceByNode).length, lbl: 'Active nodes',      trend: '+12%',  up: true  },
                           { emoji: '⚠️', accent: PALETTE.red.solid,   lightBg: PALETTE.red.light,   val: allLow,                            lbl: 'Low stock alerts',  trend: '+' + allLow,  up: false },
                           { emoji: '🔔', accent: PALETTE.amber.solid, lightBg: PALETTE.amber.light, val: allWarn,                           lbl: 'Near reorder',      trend: '+' + allWarn, up: false },
                         ].map((c, i) => (
@@ -491,18 +525,20 @@ export default function InvReports() {
                         ))}
                       </div>
 
-                      <SectionHead title="Nodes & warehouses" hint="click a card to drill in" />
+                      <SectionHead title="Branches & locations" hint="click a card to drill in" />
 
                       {/* Node cards grid */}
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0,1fr))', gap: 12, marginBottom: 24 }}>
-                        {Object.entries(balanceByNode)
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 12, marginBottom: 24 }}>
+                        {Object.entries(visibleBalanceByNode)
                           .sort((a, b) => { const o = { low: 0, warn: 1, ok: 2 }; return o[worstOf(a[1], reorderFn)] - o[worstOf(b[1], reorderFn)]; })
                           .map(([nodeId, rows]) => {
                             const worst  = worstOf(rows, reorderFn);
                             const counts = countBy(rows, reorderFn);
                             const s      = STATUS[worst];
                             const okPct  = Math.round((counts.ok / rows.length) * 100);
-                            const isWH   = !String(nodeId).startsWith('b_');
+                            const nodeObj = nodes.find(n => String(n.node_id) === String(nodeId) || String(n.node_id).replace('b_','') === String(nodeId).replace('b_',''));
+                            const nodeType = nodeObj?.node_type || (String(nodeId).startsWith('b_') ? 'branch' : 'warehouse');
+                            const nodeIcon = nodeType === 'warehouse' ? '🏭' : nodeType === 'cloud_kitchen' ? '☁️' : '🏪';
                             return (
                               <div key={nodeId} onClick={() => setDrillNode(nodeId)} style={{
                                 ...CARD, cursor: 'pointer',
@@ -513,7 +549,7 @@ export default function InvReports() {
                                 onMouseLeave={e => e.currentTarget.style.boxShadow = 'none'}
                               >
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
-                                  <div style={{ width: 38, height: 38, borderRadius: 10, background: s.solid, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, flexShrink: 0 }}>{isWH ? '🏭' : '🏪'}</div>
+                                  <div style={{ width: 38, height: 38, borderRadius: 10, background: s.solid, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, flexShrink: 0 }}>{nodeIcon}</div>
                                   <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                                     {counts.low  > 0 && <span style={{ fontSize: 10, fontWeight: 600, padding: '3px 8px', borderRadius: 99, background: STATUS.low.pillBg,  color: STATUS.low.pillText  }}>{counts.low} low</span>}
                                     {counts.warn > 0 && <span style={{ fontSize: 10, fontWeight: 600, padding: '3px 8px', borderRadius: 99, background: STATUS.warn.pillBg, color: STATUS.warn.pillText }}>{counts.warn} warn</span>}
@@ -728,7 +764,7 @@ export default function InvReports() {
 
               {/* TABLE MODE */}
               {filteredBalance.length > 0 && viewMode === 'table' && (
-                Object.entries(balanceByNode).map(([nodeId, rows]) => (
+                Object.entries(visibleBalanceByNode).map(([nodeId, rows]) => (
                   <div key={nodeId} style={{ marginBottom: 20 }}>
                     <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 10, color: PALETTE.green.solid, display: 'flex', alignItems: 'center', gap: 8 }}>
                       📍 {getNodeName(parseInt(nodeId))}
