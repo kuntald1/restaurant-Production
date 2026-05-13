@@ -339,7 +339,7 @@ export default function InvReports() {
   const loadOutstanding = async () => {
     if (!cid) return;
     setLoading(true);
-    try { setOutstanding((await invReportsAPI.supplierOutstanding(rootCid || cid)) || []); }
+    try { setOutstanding((await invReportsAPI.supplierOutstanding(cid)) || []); }
     catch { setOutstanding([]); }
     setLoading(false);
   };
