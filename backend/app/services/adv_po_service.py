@@ -313,13 +313,40 @@ def generate_suggestions(db: Session, company_id: int, node_id: int, po_id: int,
 
 
 def accept_suggestions(db: Session, po_id: int, accepted: list[dict]) -> None:
-    """Save manager's accepted quantities back to suggestions."""
+    """Save manager's accepted quantities back to suggestions AND update PO line items."""
+    from sqlalchemy import text as _text
     for a in accepted:
+        # 1. Save to suggestion table
         sugg = db.query(AdvPoSuggestion).filter_by(
             po_id=po_id, item_id=a["item_id"]
         ).first()
         if sugg:
             sugg.accepted_qty = a["accepted_qty"]
+
+        # 2. Update actual PO line item quantity
+        db.execute(_text("""
+            UPDATE inv_purchase_order_item
+            SET ordered_qty = :qty
+            WHERE po_id = :po_id
+              AND item_id = :item_id
+              AND is_active = TRUE
+        """), {
+            "qty":     a["accepted_qty"],
+            "po_id":   po_id,
+            "item_id": a["item_id"],
+        })
+
+    # 3. Recalculate PO total amount
+    db.execute(_text("""
+        UPDATE inv_purchase_order
+        SET total_amount = (
+            SELECT COALESCE(SUM(ordered_qty * unit_price), 0)
+            FROM inv_purchase_order_item
+            WHERE po_id = :po_id AND is_active = TRUE
+        )
+        WHERE po_id = :po_id
+    """), {"po_id": po_id})
+
     db.commit()
 
 
