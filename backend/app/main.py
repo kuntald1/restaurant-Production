@@ -56,5 +56,16 @@ app.include_router(whatsapp_log_router.router)
 app.include_router(contact_lead_router.router)
 app.include_router(subscription_router.router)
 app.include_router(inventory_router.router)
-from app.routers import adv_po_router
-app.include_router(adv_po_router.router)
+try:
+    from app.routers import adv_po_router
+    app.include_router(adv_po_router.router)
+except Exception as e:
+    import logging
+    logging.warning(f"adv_po_router not loaded: {e}. Run the SQL migration first.")
+
+try:
+    from app.routers import production_router
+    app.include_router(production_router.router)
+except Exception as e:
+    import logging
+    logging.warning(f"production_router not loaded: {e}. Run the production SQL migration first.")

@@ -354,3 +354,13 @@ export const advPoAPI = {
   // Weather preview
   previewWeather:    (cid)              => request('GET',    `/adv-po/weather-preview/${cid}`),
 };
+
+// ── Production Entry ──────────────────────────────────────────
+export const productionAPI = {
+  getAll:   (cid)          => request('GET',    `/production/list/${cid}`),
+  getById:  (id)           => request('GET',    `/production/${id}`),
+  create:   (data)         => request('POST',   '/production', data),
+  update:   (id, data)     => request('PUT',    `/production/${id}`, data),
+  post:     (id, by)       => request('POST',   `/production/${id}/post${by ? `?posted_by=${by}` : ''}`),
+  delete:   (id)           => request('DELETE', `/production/${id}`),
+};
