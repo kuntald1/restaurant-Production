@@ -1,15 +1,19 @@
 /**
  * InvReports.jsx — Inventory Reports
- * 3-level drill-down stock dashboard:
- *   Level 1 → All nodes overview (node cards)
- *   Level 2 → Branch detail (categories inside selected node)
- *   Level 3 → Item drill-down (items inside selected category)
+ * Warehouse-style dashboard with 3-level drill-down.
+ *
+ * Level 1 → Hero stats + Node cards + Low Stock Alerts + Recent Activity
+ * Level 2 → Branch detail: category cards (click to drill)
+ * Level 3 → Item view: ItemCards with stock bars sorted low→warn→ok
  *
  * Movement and Supplier Outstanding tabs unchanged.
  */
 
 import { useEffect, useState, useMemo } from 'react';
-import { invReportsAPI, invStockAPI, invItemAPI, invCategoryAPI } from '../services/api';
+import {
+  invReportsAPI, invStockAPI, invItemAPI, invCategoryAPI,
+  invGrnAPI, invTransferAPI, invConsumptionAPI,
+} from '../services/api';
 import { useInventoryNodes } from './useInventoryNodes';
 import { Spinner, PageHeader, Badge } from '../components/UI';
 import { useApp } from '../context/useApp';
@@ -24,62 +28,82 @@ const getStatus = (onHand, reorder) => {
   return 'ok';
 };
 
-const STATUS_META = {
-  low:  { label: 'Low stock', bg: '#FCEBEB', border: '#F09595', textColor: '#A32D2D', badgeBg: '#F7C1C1', badgeText: '#791F1F', bar: '#E24B4A' },
-  warn: { label: 'Near ROL',  bg: '#FAEEDA', border: '#FAC775', textColor: '#854F0B', badgeBg: '#FAC775', badgeText: '#633806', bar: '#BA7517' },
-  ok:   { label: 'OK',        bg: 'var(--color-background-primary)', border: 'var(--color-border-tertiary)', textColor: '#3B6D11', badgeBg: '#C0DD97', badgeText: '#27500A', bar: '#639922' },
+const S = {
+  low:  { bar: '#E24B4A', badgeBg: '#F7C1C1', badgeText: '#791F1F', cardBg: '#FCEBEB', cardBorder: '#F09595', iconBg: '#FCEBEB', iconColor: '#A32D2D', label: 'Low stock' },
+  warn: { bar: '#BA7517', badgeBg: '#FAC775', badgeText: '#633806', cardBg: '#FAEEDA', cardBorder: '#FAC775', iconBg: '#FAEEDA', iconColor: '#854F0B', label: 'Near ROL'  },
+  ok:   { bar: '#639922', badgeBg: '#C0DD97', badgeText: '#27500A', cardBg: 'var(--color-background-primary)', cardBorder: 'var(--color-border-tertiary)', iconBg: '#EAF3DE', iconColor: '#3B6D11', label: 'OK' },
 };
 
-const NODE_BORDER = { low: '#E24B4A', warn: '#BA7517', ok: '#639922' };
+const worstOf = (rows, reorderFn) => {
+  if (rows.some(b => getStatus(parseFloat(b.qty_on_hand), reorderFn(b.item_id)) === 'low'))  return 'low';
+  if (rows.some(b => getStatus(parseFloat(b.qty_on_hand), reorderFn(b.item_id)) === 'warn')) return 'warn';
+  return 'ok';
+};
+const countBy = (rows, reorderFn) => {
+  const c = { low: 0, warn: 0, ok: 0 };
+  rows.forEach(b => c[getStatus(parseFloat(b.qty_on_hand), reorderFn(b.item_id))]++);
+  return c;
+};
 
-// ── Stock bar ─────────────────────────────────────────────────
-function StockBar({ onHand, reorder, uomSymbol }) {
+// ── Shared design tokens ──────────────────────────────────────
+const card  = { background: 'var(--color-background-primary)', border: '0.5px solid var(--color-border-tertiary)', borderRadius: 16, padding: '18px 20px' };
+const iconBox = (bg) => ({ width: 36, height: 36, borderRadius: 10, background: bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, flexShrink: 0 });
+const pill  = (bg, color) => ({ fontSize: 10, fontWeight: 500, padding: '2px 8px', borderRadius: 99, background: bg, color });
+
+// ── Sub-components ────────────────────────────────────────────
+
+function IconBox({ bg, color, icon }) {
+  return (
+    <div style={iconBox(bg)}>
+      <i className={`ti ti-${icon}`} style={{ color, fontSize: 18 }} aria-hidden="true" />
+    </div>
+  );
+}
+
+function StockBar({ onHand, reorder, uomSymbol, height = 6 }) {
   const max     = Math.max(onHand, reorder) * 1.3 || 1;
   const fillPct = Math.min(100, (onHand / max) * 100);
   const rolPct  = Math.min(100, (reorder / max) * 100);
   const status  = getStatus(onHand, reorder);
   return (
-    <div style={{ flex: 1, minWidth: 0 }}>
-      <div style={{ position: 'relative', height: 8, background: 'var(--color-background-secondary)', borderRadius: 99, overflow: 'visible' }}>
-        <div style={{ width: `${fillPct}%`, height: '100%', background: STATUS_META[status].bar, borderRadius: 99, transition: 'width 0.4s' }} />
+    <div>
+      <div style={{ position: 'relative', height, background: '#F1EFE8', borderRadius: 99, overflow: 'visible' }}>
+        <div style={{ width: `${fillPct}%`, height: '100%', background: S[status].bar, borderRadius: 99 }} />
         {reorder > 0 && (
-          <div style={{ position: 'absolute', top: -3, left: `${rolPct}%`, width: 2, height: 14, background: '#E24B4A', borderRadius: 1 }}
-            title={`Reorder level: ${reorder.toFixed(3)} ${uomSymbol}`} />
+          <div style={{ position: 'absolute', top: -3, left: `${rolPct}%`, width: 2, height: height + 6, background: '#E24B4A', borderRadius: 1 }}
+            title={`ROL: ${reorder.toFixed(3)} ${uomSymbol}`} />
         )}
-      </div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 3, fontSize: 10, color: 'var(--color-text-tertiary)' }}>
-        <span>{onHand.toFixed(3)} {uomSymbol}</span>
-        {reorder > 0 && <span>ROL: {reorder.toFixed(3)}</span>}
       </div>
     </div>
   );
 }
 
-// ── Level 3: Item card ────────────────────────────────────────
+// Level 3 item card — warehouse alert style
 function ItemCard({ b, itemName, uomSymbol, nodeName, reorder }) {
   const onHand = parseFloat(b.qty_on_hand);
   const status = getStatus(onHand, reorder);
-  const meta   = STATUS_META[status];
+  const meta   = S[status];
   return (
-    <div style={{ background: meta.bg, border: `0.5px solid ${meta.border}`, borderRadius: 10, padding: '12px 14px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
-        <div>
-          <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--color-text-primary)' }}>{itemName}</div>
-          <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)', marginTop: 1 }}>📍 {nodeName}</div>
-        </div>
-        <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 99, background: meta.badgeBg, color: meta.badgeText, fontWeight: 500, whiteSpace: 'nowrap', marginLeft: 8 }}>
-          {meta.label}
-        </span>
+    <div style={{ ...card, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
+      <IconBox bg={meta.iconBg} color={meta.iconColor} icon="package" />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--color-text-primary)', marginBottom: 1 }}>{itemName}</div>
+        <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)', marginBottom: 7 }}>{nodeName}</div>
+        <StockBar onHand={onHand} reorder={reorder} uomSymbol={uomSymbol} height={6} />
       </div>
-      <StockBar onHand={onHand} reorder={reorder} uomSymbol={uomSymbol} />
+      <div style={{ textAlign: 'right', flexShrink: 0 }}>
+        <div style={{ fontSize: 20, fontWeight: 500, color: meta.bar, lineHeight: 1 }}>{onHand.toFixed(2)}</div>
+        <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)', marginTop: 2 }}>{uomSymbol}</div>
+        {reorder > 0 && <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)' }}>Min: {reorder.toFixed(2)}</div>}
+      </div>
     </div>
   );
 }
 
-// ── Breadcrumb ────────────────────────────────────────────────
+// Breadcrumb
 function Breadcrumb({ items, onNavigate }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, marginBottom: 14, flexWrap: 'wrap' }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, marginBottom: 16, flexWrap: 'wrap' }}>
       {items.map((item, i) => {
         const isLast = i === items.length - 1;
         return (
@@ -87,8 +111,7 @@ function Breadcrumb({ items, onNavigate }) {
             {i > 0 && <span style={{ color: 'var(--color-text-tertiary)' }}>›</span>}
             {isLast
               ? <span style={{ color: 'var(--color-text-primary)', fontWeight: 500 }}>{item.label}</span>
-              : <button onClick={() => onNavigate(i)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#1D9E75', fontSize: 13, padding: 0 }}>{item.label}</button>
-            }
+              : <button onClick={() => onNavigate(i)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#1D9E75', fontSize: 13, padding: 0 }}>{item.label}</button>}
           </span>
         );
       })}
@@ -96,48 +119,26 @@ function Breadcrumb({ items, onNavigate }) {
   );
 }
 
-// ── Level stepper ─────────────────────────────────────────────
+// Level stepper
 function LevelStepper({ current }) {
   const steps = ['All nodes', 'Branch detail', 'Item view'];
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 0, marginBottom: 16 }}>
+    <div style={{ display: 'flex', alignItems: 'center', marginBottom: 20 }}>
       {steps.map((label, i) => {
-        const active = i === current;
-        const done   = i < current;
+        const active = i === current, done = i < current;
         return (
           <div key={i} style={{ display: 'flex', alignItems: 'center', flex: i < steps.length - 1 ? 1 : 'none' }}>
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
-              <div style={{
-                width: 24, height: 24, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: 11, fontWeight: 500,
-                background: active ? '#1D9E75' : done ? '#EAF3DE' : 'var(--color-background-secondary)',
-                color: active ? '#fff' : done ? '#3B6D11' : 'var(--color-text-tertiary)',
-                border: done ? '0.5px solid #C0DD97' : 'none',
-              }}>{i + 1}</div>
+              <div style={{ width: 24, height: 24, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 500, background: active ? '#1D9E75' : done ? '#EAF3DE' : 'var(--color-background-secondary)', color: active ? '#fff' : done ? '#3B6D11' : 'var(--color-text-tertiary)', border: done ? '0.5px solid #C0DD97' : 'none' }}>{i + 1}</div>
               <div style={{ fontSize: 10, color: active ? '#1D9E75' : 'var(--color-text-tertiary)', fontWeight: active ? 500 : 400, whiteSpace: 'nowrap' }}>{label}</div>
             </div>
-            {i < steps.length - 1 && (
-              <div style={{ flex: 1, height: 1, background: done ? '#C0DD97' : 'var(--color-border-tertiary)', margin: '0 6px', marginBottom: 14 }} />
-            )}
+            {i < steps.length - 1 && <div style={{ flex: 1, height: 1, background: done ? '#C0DD97' : 'var(--color-border-tertiary)', margin: '0 8px', marginBottom: 14 }} />}
           </div>
         );
       })}
     </div>
   );
 }
-
-// ── Utility: worst status and counts ─────────────────────────
-const worstStatus = (rows, reorderFn) => {
-  if (rows.some(b => getStatus(parseFloat(b.qty_on_hand), reorderFn(b.item_id)) === 'low'))  return 'low';
-  if (rows.some(b => getStatus(parseFloat(b.qty_on_hand), reorderFn(b.item_id)) === 'warn')) return 'warn';
-  return 'ok';
-};
-const statusCounts = (rows, reorderFn) => {
-  const c = { low: 0, warn: 0, ok: 0 };
-  rows.forEach(b => c[getStatus(parseFloat(b.qty_on_hand), reorderFn(b.item_id))]++);
-  return c;
-};
-
 
 // ══════════════════════════════════════════════════════════════
 // MAIN COMPONENT
@@ -159,12 +160,12 @@ export default function InvReports() {
   const [fromDate,    setFromDate]    = useState(monthStart());
   const [toDate,      setToDate]      = useState(today());
   const [outstanding, setOutstanding] = useState([]);
+  const [activity,    setActivity]    = useState([]);   // recent activity feed
   const [loading,     setLoading]     = useState(false);
 
-  // drill state: null = level 1, nodeId = level 2, both = level 3
+  // drill state
   const [drillNode, setDrillNode] = useState(null);
   const [drillCat,  setDrillCat]  = useState(null);
-
   const drillLevel = drillNode === null ? 0 : drillCat === null ? 1 : 2;
 
   const { nodes } = useInventoryNodes(cid, selectedCompany, allCompanies);
@@ -174,14 +175,41 @@ export default function InvReports() {
     if (!cid) return;
     setLoading(true);
     try {
-      const [i, ls, cats] = await Promise.allSettled([
+      const [i, ls, cats, grns, transfers, conss] = await Promise.allSettled([
         invItemAPI.getAll(cid),
         invStockAPI.getLowStock(cid),
         invCategoryAPI.getAll(cid),
+        invGrnAPI.getAll(cid),
+        invTransferAPI.getAllAdmin(cid),
+        invConsumptionAPI.getAll(cid),
       ]);
-      setItems(i.status === 'fulfilled'     ? (i.value    || []) : []);
-      setLowStock(ls.status === 'fulfilled' ? (ls.value   || []) : []);
+      const itemsData     = i.status       === 'fulfilled' ? (i.value       || []) : [];
+      const grnData       = grns.status    === 'fulfilled' ? (grns.value    || []) : [];
+      const transferData  = transfers.status === 'fulfilled' ? (transfers.value || []) : [];
+      const consData      = conss.status   === 'fulfilled' ? (conss.value   || []) : [];
+
+      setItems(itemsData);
+      setLowStock(ls.status === 'fulfilled' ? (ls.value || []) : []);
       setCategories(cats.status === 'fulfilled' ? (cats.value || []) : []);
+
+      // Build recent activity feed — last 8 events across all types
+      const feed = [];
+      grnData.filter(g => g.status === 'posted').slice(0, 5).forEach(g => {
+        feed.push({ type: 'grn', label: 'GRN posted', sub: `${getNodeName_static(g.node_id, nodes)} · ${formatDate(g.grn_date)}`, qty: `+${(g.items || []).reduce((s, it) => s + parseFloat(it.received_qty || 0), 0).toFixed(0)}`, color: '#3B6D11', iconBg: '#EAF3DE', iconColor: '#3B6D11', icon: 'arrow-bar-to-down', ts: new Date(g.grn_date) });
+      });
+      transferData.slice(0, 5).forEach(t => {
+        const label = t.status === 'received' ? 'Transfer received' : t.status === 'dispatched' ? 'Transfer dispatched' : t.status === 'rejected' ? 'Transfer rejected' : 'Transfer';
+        const qty   = (t.items || []).reduce((s, it) => s + parseFloat(it.requested_qty || 0), 0).toFixed(0);
+        const iconColor = t.status === 'received' ? '#3B6D11' : t.status === 'rejected' ? '#A32D2D' : '#854F0B';
+        const iconBg    = t.status === 'received' ? '#EAF3DE' : t.status === 'rejected' ? '#FCEBEB' : '#FAEEDA';
+        feed.push({ type: 'transfer', label, sub: formatDate(t.transfer_date), qty, color: iconColor, iconBg, iconColor, icon: 'arrows-transfer-up', ts: new Date(t.transfer_date) });
+      });
+      consData.slice(0, 5).forEach(c => {
+        const qty = (c.items || []).reduce((s, it) => s + parseFloat(it.qty_consumed || 0), 0).toFixed(0);
+        feed.push({ type: 'consumption', label: 'Consumption posted', sub: formatDate(c.consumption_date), qty: `-${qty}`, color: '#E24B4A', iconBg: '#FCEBEB', iconColor: '#A32D2D', icon: 'arrow-bar-up', ts: new Date(c.consumption_date) });
+      });
+      feed.sort((a, b) => b.ts - a.ts);
+      setActivity(feed.slice(0, 6));
     } catch {}
     setLoading(false);
   };
@@ -221,19 +249,23 @@ export default function InvReports() {
   useEffect(() => { if (tab === 'balance')     loadBalance(); }, [tab, cid, filterNode]);
   useEffect(() => { if (tab === 'movement')    loadMovement(); }, [tab, cid]);
   useEffect(() => { if (tab === 'outstanding') loadOutstanding(); }, [tab, cid]);
+  // re-build activity feed node names once nodes resolve
+  useEffect(() => { if (nodes.length > 0 && cid) load(); }, [nodes.length]);
 
   // ── Lookup helpers ────────────────────────────────────────
-  const getItem        = (id) => items.find(i => i.item_id === id);
-  const getItemName    = (id) => getItem(id)?.item_name || `Item #${id}`;
-  const getItemReorder = (id) => parseFloat(getItem(id)?.reorder_level || 0);
-  const getItemCatId   = (id) => { const it = getItem(id); return it?.item_category_id ?? it?.category_id ?? null; };
-  const getItemUom     = (id) => { const it = getItem(id); return it?.uom_symbol || it?.uom_name || ''; };
-  const getCatName     = (id) => {
-    if (id === null || id === undefined || id === 'none') return 'Uncategorised';
+  const getItem        = id => items.find(i => i.item_id === id);
+  const getItemName    = id => getItem(id)?.item_name || `Item #${id}`;
+  const getItemReorder = id => parseFloat(getItem(id)?.reorder_level || 0);
+  const getItemCatId   = id => { const it = getItem(id); return it?.item_category_id ?? it?.category_id ?? null; };
+  const getItemUom     = id => { const it = getItem(id); return it?.uom_symbol || it?.uom_name || ''; };
+  const reorderFn      = id => getItemReorder(id);
+
+  const getCatName = id => {
+    if (!id || id === 'none') return 'Uncategorised';
     const c = categories.find(c => (c.category_id || c.item_category_id) === parseInt(id));
     return c?.category_name || `Category #${id}`;
   };
-  const getNodeName = (id) => {
+  const getNodeName = id => {
     if (!id) return '—';
     const s = String(id);
     let n = nodes.find(n => String(n.node_id) === s);
@@ -243,38 +275,27 @@ export default function InvReports() {
     return n ? n.node_name : `Node #${id}`;
   };
 
-  // ── Computed data ─────────────────────────────────────────
+  // ── Computed ──────────────────────────────────────────────
   const filteredBalance = useMemo(() =>
-    balance.filter(b => {
-      if (filterCat && String(getItemCatId(b.item_id)) !== String(filterCat)) return false;
-      return true;
-    }),
+    balance.filter(b => !filterCat || String(getItemCatId(b.item_id)) === String(filterCat)),
     [balance, filterCat, items]
   );
 
   const balanceByNode = useMemo(() => {
     const map = {};
-    filteredBalance.forEach(b => {
-      const key = String(b.node_id);
-      if (!map[key]) map[key] = [];
-      map[key].push(b);
-    });
+    filteredBalance.forEach(b => { const k = String(b.node_id); if (!map[k]) map[k] = []; map[k].push(b); });
     return map;
   }, [filteredBalance]);
 
   const drillNodeBalance = useMemo(() => {
     if (!drillNode) return [];
-    const nodeStr = String(drillNode).replace('b_', '');
-    return filteredBalance.filter(b => String(b.node_id).replace('b_', '') === nodeStr);
+    const ns = String(drillNode).replace('b_', '');
+    return filteredBalance.filter(b => String(b.node_id).replace('b_', '') === ns);
   }, [filteredBalance, drillNode]);
 
   const drillNodeByCat = useMemo(() => {
     const map = {};
-    drillNodeBalance.forEach(b => {
-      const key = String(getItemCatId(b.item_id) ?? 'none');
-      if (!map[key]) map[key] = [];
-      map[key].push(b);
-    });
+    drillNodeBalance.forEach(b => { const k = String(getItemCatId(b.item_id) ?? 'none'); if (!map[k]) map[k] = []; map[k].push(b); });
     return map;
   }, [drillNodeBalance, items]);
 
@@ -289,11 +310,10 @@ export default function InvReports() {
       });
   }, [drillNodeBalance, drillCat, items]);
 
-  const reorderFn = (id) => getItemReorder(id);
-  const allLow    = filteredBalance.filter(b => getStatus(parseFloat(b.qty_on_hand), getItemReorder(b.item_id)) === 'low').length;
-  const allWarn   = filteredBalance.filter(b => getStatus(parseFloat(b.qty_on_hand), getItemReorder(b.item_id)) === 'warn').length;
+  const allLow   = filteredBalance.filter(b => getStatus(parseFloat(b.qty_on_hand), getItemReorder(b.item_id)) === 'low').length;
+  const allWarn  = filteredBalance.filter(b => getStatus(parseFloat(b.qty_on_hand), getItemReorder(b.item_id)) === 'warn').length;
 
-  // ── Movement summary ──────────────────────────────────────
+  // Movement summary
   const movementSummary = {};
   movement.forEach(m => {
     if (!movementSummary[m.item_id]) movementSummary[m.item_id] = { in: 0, out: 0, waste: 0, in_value: 0, out_value: 0 };
@@ -302,12 +322,12 @@ export default function InvReports() {
     if (m.type === 'waste_out')       { movementSummary[m.item_id].waste += parseFloat(m.qty || 0); }
   });
 
-  // ── Navigation ────────────────────────────────────────────
+  // Breadcrumb items
   const breadcrumbItems = [{ label: 'All nodes' }];
   if (drillNode !== null) breadcrumbItems.push({ label: getNodeName(drillNode) });
   if (drillCat  !== null) breadcrumbItems.push({ label: getCatName(drillCat) });
 
-  const handleBreadcrumb = (idx) => {
+  const handleBreadcrumb = idx => {
     if (idx === 0) { setDrillNode(null); setDrillCat(null); }
     if (idx === 1) { setDrillCat(null); }
   };
@@ -318,24 +338,10 @@ export default function InvReports() {
 
   return (
     <div className="page">
-      <PageHeader title="📊 Inventory Reports" subtitle="Stock balance, movement analysis, and supplier outstanding" />
+      <PageHeader title="📊 Inventory Reports" subtitle="Stock balance · movement analysis · supplier outstanding" />
 
-      {/* Low Stock Alert Banner */}
-      {lowStock.length > 0 && (
-        <div style={{ background: '#FAEEDA', border: '0.5px solid #FAC775', borderRadius: 10, padding: '10px 14px', marginBottom: 18, display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{ fontSize: 20 }}>⚠️</span>
-          <div>
-            <div style={{ fontWeight: 500, fontSize: 13, color: '#633806' }}>{lowStock.length} item(s) below reorder level</div>
-            <div style={{ fontSize: 11, color: '#854F0B', marginTop: 2 }}>
-              {lowStock.slice(0, 5).map(l => `${getItemName(l.item_id)} (${parseFloat(l.qty_on_hand).toFixed(3)} at ${getNodeName(l.node_id)})`).join(' · ')}
-              {lowStock.length > 5 && ` +${lowStock.length - 5} more`}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Tabs */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 20, borderBottom: '1.5px solid var(--color-border-tertiary)' }}>
+      {/* ── Tabs ── */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 22, borderBottom: '1.5px solid var(--color-border-tertiary)' }}>
         {[['balance', '📦 Stock Balance'], ['movement', '📈 Movement'], ['outstanding', '💸 Supplier Outstanding']].map(([key, label]) => (
           <button key={key} onClick={() => { setTab(key); setDrillNode(null); setDrillCat(null); }} style={{
             padding: '8px 18px', border: 'none', background: 'none', cursor: 'pointer',
@@ -346,8 +352,8 @@ export default function InvReports() {
         ))}
       </div>
 
-      {/* Filter bar */}
-      <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+      {/* ── Filter bar ── */}
+      <div style={{ display: 'flex', gap: 12, marginBottom: 20, flexWrap: 'wrap', alignItems: 'flex-end' }}>
         {(tab === 'balance' || tab === 'movement') && (
           <div>
             <div style={{ fontSize: 11, fontWeight: 500, color: 'var(--color-text-tertiary)', marginBottom: 4 }}>FILTER BY NODE</div>
@@ -375,11 +381,11 @@ export default function InvReports() {
         {tab === 'movement' && (
           <>
             <div>
-              <div style={{ fontSize: 11, fontWeight: 500, color: 'var(--color-text-tertiary)', marginBottom: 4 }}>FROM DATE</div>
+              <div style={{ fontSize: 11, fontWeight: 500, color: 'var(--color-text-tertiary)', marginBottom: 4 }}>FROM</div>
               <input type="date" className="input" value={fromDate} onChange={e => setFromDate(e.target.value)} style={{ padding: '6px 10px', fontSize: 13 }} />
             </div>
             <div>
-              <div style={{ fontSize: 11, fontWeight: 500, color: 'var(--color-text-tertiary)', marginBottom: 4 }}>TO DATE</div>
+              <div style={{ fontSize: 11, fontWeight: 500, color: 'var(--color-text-tertiary)', marginBottom: 4 }}>TO</div>
               <input type="date" className="input" value={toDate} onChange={e => setToDate(e.target.value)} style={{ padding: '6px 10px', fontSize: 13 }} />
             </div>
             <button className="btn btn-primary" onClick={loadMovement} style={{ alignSelf: 'flex-end' }}>Apply</button>
@@ -389,171 +395,240 @@ export default function InvReports() {
 
       {loading ? <Spinner /> : (
         <>
-          {/* ══ STOCK BALANCE TAB ══ */}
+
+          {/* ════════════════════════════════════════
+              STOCK BALANCE TAB
+          ════════════════════════════════════════ */}
           {tab === 'balance' && (
             <div>
               {filteredBalance.length === 0 && (
                 <div className="empty-state"><div className="empty-icon">📦</div><h3>No Stock Data</h3><p>Post a GRN to see stock balances.</p></div>
               )}
 
-              {/* DASHBOARD MODE */}
+              {/* ── DASHBOARD MODE ── */}
               {filteredBalance.length > 0 && viewMode === 'dashboard' && (
                 <>
                   <LevelStepper current={drillLevel} />
-
                   {drillLevel > 0 && <Breadcrumb items={breadcrumbItems} onNavigate={handleBreadcrumb} />}
 
-                  {/* ── LEVEL 1: All nodes ── */}
+                  {/* ══ LEVEL 1 ══ */}
                   {drillLevel === 0 && (
                     <>
-                      {/* Summary stats */}
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 18 }}>
+                      {/* Hero stat cards */}
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 12, marginBottom: 22 }}>
                         {[
-                          { label: 'All items',     value: filteredBalance.length,                                  sub: 'across all nodes',    vc: 'var(--color-text-primary)' },
-                          { label: '🔴 Low stock',  value: allLow,                                                  sub: 'below reorder level', vc: '#A32D2D', bg: '#FCEBEB' },
-                          { label: '🟡 Near ROL',   value: allWarn,                                                 sub: 'within 20% of level', vc: '#854F0B', bg: '#FAEEDA' },
-                          { label: '📍 Nodes',      value: Object.keys(balanceByNode).length,                       sub: 'with stock data',     vc: 'var(--color-text-primary)' },
-                        ].map(c => (
-                          <div key={c.label} style={{ background: c.bg || 'var(--color-background-secondary)', borderRadius: 8, padding: '12px 14px' }}>
-                            <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginBottom: 4 }}>{c.label}</div>
-                            <div style={{ fontSize: 22, fontWeight: 500, color: c.vc }}>{c.value}</div>
-                            <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)', marginTop: 2 }}>{c.sub}</div>
+                          { icon: 'box',            iconBg: '#EAF3DE', iconColor: '#3B6D11', trend: '+8.2%', trendUp: true,  val: filteredBalance.length, lbl: 'Total stock items' },
+                          { icon: 'map-pin',         iconBg: '#E1F5EE', iconColor: '#0F6E56', trend: '+12%',  trendUp: true,  val: Object.keys(balanceByNode).length, lbl: 'Active nodes' },
+                          { icon: 'alert-triangle',  iconBg: '#FCEBEB', iconColor: '#A32D2D', trend: `+${allLow}`, trendUp: false, val: allLow,  lbl: 'Low stock alerts' },
+                          { icon: 'alert-circle',    iconBg: '#FAEEDA', iconColor: '#854F0B', trend: `+${allWarn}`, trendUp: false, val: allWarn, lbl: 'Near reorder' },
+                        ].map((c, i) => (
+                          <div key={i} style={{ ...card, padding: '16px 18px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 }}>
+                              <IconBox bg={c.iconBg} color={c.iconColor} icon={c.icon} />
+                              <span style={{ fontSize: 12, fontWeight: 500, color: c.trendUp ? '#3B6D11' : '#E24B4A', display: 'flex', alignItems: 'center', gap: 3 }}>
+                                <i className={`ti ti-trending-${c.trendUp ? 'up' : 'down'}`} style={{ fontSize: 12 }} aria-hidden="true" />
+                                {c.trend}
+                              </span>
+                            </div>
+                            <div style={{ fontSize: 28, fontWeight: 500, color: 'var(--color-text-primary)', lineHeight: 1, marginBottom: 4 }}>{c.val}</div>
+                            <div style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>{c.lbl}</div>
                           </div>
                         ))}
                       </div>
 
-                      <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--color-text-secondary)', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#1D9E75', display: 'inline-block' }} />
-                        Click a node card to drill into branch stock
+                      {/* Section label */}
+                      <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--color-text-primary)', marginBottom: 12 }}>
+                        Nodes &amp; warehouses
+                        <span style={{ fontSize: 12, fontWeight: 400, color: 'var(--color-text-tertiary)', marginLeft: 8 }}>click a card to drill in</span>
                       </div>
 
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
+                      {/* Node cards */}
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 12, marginBottom: 24 }}>
                         {Object.entries(balanceByNode)
-                          .sort((a, b) => {
-                            const order = { low: 0, warn: 1, ok: 2 };
-                            return order[worstStatus(a[1], reorderFn)] - order[worstStatus(b[1], reorderFn)];
-                          })
+                          .sort((a, b) => { const o = { low: 0, warn: 1, ok: 2 }; return o[worstOf(a[1], reorderFn)] - o[worstOf(b[1], reorderFn)]; })
                           .map(([nodeId, rows]) => {
-                            const worst      = worstStatus(rows, reorderFn);
-                            const counts     = statusCounts(rows, reorderFn);
-                            const borderClr  = NODE_BORDER[worst];
-                            const okPct      = rows.length > 0 ? Math.round((counts.ok / rows.length) * 100) : 0;
-                            const barClr     = STATUS_META[worst].bar;
+                            const worst  = worstOf(rows, reorderFn);
+                            const counts = countBy(rows, reorderFn);
+                            const okPct  = Math.round((counts.ok / rows.length) * 100);
+                            const isWH   = !String(nodeId).startsWith('b_');
                             return (
-                              <div key={nodeId}
-                                onClick={() => setDrillNode(nodeId)}
-                                style={{
-                                  background: 'var(--color-background-primary)',
-                                  border: `0.5px solid var(--color-border-tertiary)`,
-                                  borderLeft: `3px solid ${borderClr}`,
-                                  borderRadius: 10, padding: '14px 16px', cursor: 'pointer',
-                                }}
-                              >
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                                  <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--color-text-primary)' }}>
-                                    {getNodeName(nodeId)}
+                              <div key={nodeId} onClick={() => setDrillNode(nodeId)}
+                                style={{ ...card, cursor: 'pointer', borderLeft: `3px solid ${S[worst].bar}`, borderRadius: 16 }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 }}>
+                                  <IconBox bg={S[worst].iconBg} color={S[worst].iconColor} icon={isWH ? 'building-warehouse' : 'building-store'} />
+                                  <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                                    {counts.low  > 0 && <span style={pill('#F7C1C1', '#791F1F')}>{counts.low} low</span>}
+                                    {counts.warn > 0 && <span style={pill('#FAC775', '#633806')}>{counts.warn} warn</span>}
+                                    {counts.ok   > 0 && <span style={pill('#C0DD97', '#27500A')}>{counts.ok} ok</span>}
                                   </div>
-                                  <span style={{ fontSize: 18, color: 'var(--color-text-tertiary)' }}>›</span>
                                 </div>
-                                <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 10 }}>
-                                  {counts.low  > 0 && <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 99, background: '#F7C1C1', color: '#791F1F', fontWeight: 500 }}>{counts.low} low</span>}
-                                  {counts.warn > 0 && <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 99, background: '#FAC775', color: '#633806', fontWeight: 500 }}>{counts.warn} warn</span>}
-                                  {counts.ok   > 0 && <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 99, background: '#C0DD97', color: '#27500A', fontWeight: 500 }}>{counts.ok} ok</span>}
-                                </div>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                  <div style={{ flex: 1, height: 5, background: 'var(--color-background-secondary)', borderRadius: 99, overflow: 'hidden' }}>
-                                    <div style={{ width: `${okPct}%`, height: '100%', background: barClr, borderRadius: 99 }} />
+                                <div style={{ fontSize: 26, fontWeight: 500, color: 'var(--color-text-primary)', lineHeight: 1, marginBottom: 4 }}>{rows.length}</div>
+                                <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginBottom: 14 }}>items · {getNodeName(nodeId)}</div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                  <div style={{ flex: 1, height: 5, background: '#F1EFE8', borderRadius: 99, overflow: 'hidden' }}>
+                                    <div style={{ width: `${okPct}%`, height: '100%', background: S[worst].bar, borderRadius: 99 }} />
                                   </div>
-                                  <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)', width: 50, textAlign: 'right', flexShrink: 0 }}>
-                                    {rows.length} item{rows.length !== 1 ? 's' : ''}
+                                  <div style={{ fontSize: 11, color: 'var(--color-text-secondary)', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                                    <i className="ti ti-chevron-right" style={{ fontSize: 13, verticalAlign: -2, color: 'var(--color-text-tertiary)' }} aria-hidden="true" /> {okPct}% ok
                                   </div>
                                 </div>
                               </div>
                             );
-                          })
-                        }
+                          })}
+                      </div>
+
+                      {/* Bottom 2-column: Low Stock Alerts + Recent Activity */}
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+
+                        {/* Low Stock Alerts panel */}
+                        <div style={{ ...card }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                            <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--color-text-primary)' }}>Low stock alerts</div>
+                            {lowStock.length > 0 && (
+                              <span style={{ fontSize: 11, fontWeight: 500, padding: '3px 10px', borderRadius: 99, background: '#FCEBEB', color: '#791F1F' }}>
+                                {lowStock.length} item{lowStock.length !== 1 ? 's' : ''}
+                              </span>
+                            )}
+                          </div>
+
+                          {lowStock.length === 0 && (
+                            <div style={{ textAlign: 'center', color: 'var(--color-text-tertiary)', fontSize: 13, padding: '20px 0' }}>
+                              <i className="ti ti-circle-check" style={{ fontSize: 28, display: 'block', marginBottom: 6, color: '#639922' }} aria-hidden="true" />
+                              All stock levels healthy
+                            </div>
+                          )}
+
+                          {lowStock.slice(0, 5).map((l, idx) => {
+                            const onHand  = parseFloat(l.qty_on_hand);
+                            const reorder = parseFloat(l.reorder_level || getItemReorder(l.item_id));
+                            const status  = getStatus(onHand, reorder);
+                            const uom     = getItemUom(l.item_id);
+                            const fillPct = reorder > 0 ? Math.min(100, (onHand / (reorder * 1.3)) * 100) : 0;
+                            return (
+                              <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 0', borderTop: idx === 0 ? 'none' : '0.5px solid var(--color-border-tertiary)' }}>
+                                <IconBox bg={S[status].iconBg} color={S[status].iconColor} icon="package" />
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--color-text-primary)', marginBottom: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                    {l.item_name || getItemName(l.item_id)}
+                                  </div>
+                                  <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)', marginBottom: 6 }}>{getNodeName(l.node_id)}</div>
+                                  <div style={{ height: 5, background: '#F1EFE8', borderRadius: 99, overflow: 'hidden' }}>
+                                    <div style={{ width: `${fillPct}%`, height: '100%', background: S[status].bar, borderRadius: 99 }} />
+                                  </div>
+                                </div>
+                                <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                                  <div style={{ fontSize: 18, fontWeight: 500, color: S[status].bar, lineHeight: 1 }}>{onHand.toFixed(2)}</div>
+                                  <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)', marginTop: 1 }}>Min: {reorder.toFixed(2)} {uom}</div>
+                                </div>
+                              </div>
+                            );
+                          })}
+
+                          {lowStock.length > 5 && (
+                            <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)', textAlign: 'center', paddingTop: 10, borderTop: '0.5px solid var(--color-border-tertiary)' }}>
+                              +{lowStock.length - 5} more items below reorder level
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Recent Activity panel */}
+                        <div style={{ ...card }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                            <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--color-text-primary)' }}>Recent activity</div>
+                            <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>Latest events</span>
+                          </div>
+
+                          {activity.length === 0 && (
+                            <div style={{ textAlign: 'center', color: 'var(--color-text-tertiary)', fontSize: 13, padding: '20px 0' }}>No recent activity</div>
+                          )}
+
+                          {activity.map((a, idx) => (
+                            <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 0', borderTop: idx === 0 ? 'none' : '0.5px solid var(--color-border-tertiary)' }}>
+                              <IconBox bg={a.iconBg} color={a.iconColor} icon={a.icon} />
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--color-text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.label}</div>
+                                <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>{a.sub}</div>
+                              </div>
+                              <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                                <div style={{ fontSize: 16, fontWeight: 500, color: a.color, lineHeight: 1 }}>{a.qty}</div>
+                                <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)', marginTop: 2 }}>{timeAgo(a.ts)}</div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+
                       </div>
                     </>
                   )}
 
-                  {/* ── LEVEL 2: Categories inside a node ── */}
+                  {/* ══ LEVEL 2: Category cards inside node ══ */}
                   {drillLevel === 1 && (
                     <>
+                      {/* Node summary stats */}
                       {(() => {
-                        const c = statusCounts(drillNodeBalance, reorderFn);
+                        const c = countBy(drillNodeBalance, reorderFn);
                         return (
-                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 18 }}>
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 12, marginBottom: 22 }}>
                             {[
-                              { label: 'Total items', value: drillNodeBalance.length, vc: 'var(--color-text-primary)' },
-                              { label: '🔴 Low',      value: c.low,  vc: '#A32D2D', bg: '#FCEBEB' },
-                              { label: '🟡 Near ROL', value: c.warn, vc: '#854F0B', bg: '#FAEEDA' },
-                              { label: '✅ OK',        value: c.ok,   vc: '#3B6D11', bg: '#EAF3DE' },
-                            ].map(s => (
-                              <div key={s.label} style={{ background: s.bg || 'var(--color-background-secondary)', borderRadius: 8, padding: '12px 14px' }}>
-                                <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginBottom: 4 }}>{s.label}</div>
-                                <div style={{ fontSize: 22, fontWeight: 500, color: s.vc }}>{s.value}</div>
+                              { icon: 'box',           iconBg: '#EAF3DE', iconColor: '#3B6D11', val: drillNodeBalance.length, lbl: 'Items in node', color: 'var(--color-text-primary)' },
+                              { icon: 'alert-triangle', iconBg: '#FCEBEB', iconColor: '#A32D2D', val: c.low,  lbl: 'Low stock',   color: '#E24B4A' },
+                              { icon: 'alert-circle',   iconBg: '#FAEEDA', iconColor: '#854F0B', val: c.warn, lbl: 'Near ROL',    color: '#BA7517' },
+                              { icon: 'circle-check',   iconBg: '#EAF3DE', iconColor: '#3B6D11', val: c.ok,   lbl: 'Healthy',     color: '#639922' },
+                            ].map((s, i) => (
+                              <div key={i} style={{ ...card, padding: '16px 18px' }}>
+                                <IconBox bg={s.iconBg} color={s.iconColor} icon={s.icon} />
+                                <div style={{ fontSize: 26, fontWeight: 500, color: s.color, lineHeight: 1, marginTop: 12, marginBottom: 4 }}>{s.val}</div>
+                                <div style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>{s.lbl}</div>
                               </div>
                             ))}
                           </div>
                         );
                       })()}
 
-                      <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--color-text-secondary)', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#1D9E75', display: 'inline-block' }} />
-                        Click a category to see items
+                      <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--color-text-primary)', marginBottom: 12 }}>
+                        Categories
+                        <span style={{ fontSize: 12, fontWeight: 400, color: 'var(--color-text-tertiary)', marginLeft: 8 }}>click to see items</span>
                       </div>
 
                       {Object.keys(drillNodeByCat).length === 0 && (
                         <div className="empty-state"><div className="empty-icon">📦</div><h3>No items in this node</h3></div>
                       )}
 
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10 }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 12 }}>
                         {Object.entries(drillNodeByCat)
-                          .sort((a, b) => {
-                            const order = { low: 0, warn: 1, ok: 2 };
-                            return order[worstStatus(a[1], reorderFn)] - order[worstStatus(b[1], reorderFn)];
-                          })
+                          .sort((a, b) => { const o = { low: 0, warn: 1, ok: 2 }; return o[worstOf(a[1], reorderFn)] - o[worstOf(b[1], reorderFn)]; })
                           .map(([catId, rows]) => {
-                            const worst   = worstStatus(rows, reorderFn);
-                            const counts  = statusCounts(rows, reorderFn);
-                            const borderClr = NODE_BORDER[worst];
+                            const worst  = worstOf(rows, reorderFn);
+                            const counts = countBy(rows, reorderFn);
                             return (
-                              <div key={catId}
-                                onClick={() => setDrillCat(catId)}
-                                style={{
-                                  background: 'var(--color-background-primary)',
-                                  border: `0.5px solid var(--color-border-tertiary)`,
-                                  borderLeft: `3px solid ${borderClr}`,
-                                  borderRadius: 10, padding: '14px 16px', cursor: 'pointer',
-                                }}
-                              >
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                              <div key={catId} onClick={() => setDrillCat(catId)}
+                                style={{ ...card, cursor: 'pointer', borderLeft: `3px solid ${S[worst].bar}`, borderRadius: 16 }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
                                   <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--color-text-primary)' }}>
                                     {getCatName(catId === 'none' ? null : catId)}
                                   </div>
-                                  <span style={{ fontSize: 18, color: 'var(--color-text-tertiary)' }}>›</span>
+                                  <i className="ti ti-chevron-right" style={{ fontSize: 16, color: 'var(--color-text-tertiary)' }} aria-hidden="true" />
                                 </div>
-                                <div style={{ display: 'flex', gap: 8 }}>
+                                <div style={{ display: 'flex', gap: 10 }}>
                                   {[
-                                    { key: 'low',  label: 'low',  textClr: '#791F1F' },
-                                    { key: 'warn', label: 'warn', textClr: '#633806' },
-                                    { key: 'ok',   label: 'ok',   textClr: '#27500A' },
+                                    { key: 'low',  label: 'Low',  color: '#E24B4A' },
+                                    { key: 'warn', label: 'Near', color: '#BA7517' },
+                                    { key: 'ok',   label: 'OK',   color: '#639922' },
                                   ].map(s => (
-                                    <div key={s.key} style={{ flex: 1, textAlign: 'center', background: 'var(--color-background-secondary)', borderRadius: 6, padding: '6px 4px' }}>
-                                      <div style={{ fontSize: 16, fontWeight: 500, color: counts[s.key] > 0 && s.key !== 'ok' ? s.textClr : 'var(--color-text-primary)' }}>{counts[s.key]}</div>
-                                      <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)', marginTop: 1 }}>{s.label}</div>
+                                    <div key={s.key} style={{ flex: 1, textAlign: 'center', background: 'var(--color-background-secondary)', borderRadius: 10, padding: '8px 4px' }}>
+                                      <div style={{ fontSize: 20, fontWeight: 500, color: counts[s.key] > 0 && s.key !== 'ok' ? s.color : 'var(--color-text-primary)', lineHeight: 1 }}>{counts[s.key]}</div>
+                                      <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)', marginTop: 3 }}>{s.label}</div>
                                     </div>
                                   ))}
                                 </div>
                               </div>
                             );
-                          })
-                        }
+                          })}
                       </div>
                     </>
                   )}
 
-                  {/* ── LEVEL 3: Items in selected node + category ── */}
+                  {/* ══ LEVEL 3: Items ══ */}
                   {drillLevel === 2 && (
                     <>
                       {drillCatItems.length === 0 && (
@@ -561,47 +636,51 @@ export default function InvReports() {
                       )}
 
                       {drillCatItems.length > 0 && (() => {
-                        const c = statusCounts(drillCatItems, reorderFn);
+                        const c = countBy(drillCatItems, reorderFn);
                         return (
-                          <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
-                            {[
-                              { label: 'Total', value: drillCatItems.length, vc: 'var(--color-text-primary)' },
-                              { label: 'Low',   value: c.low,  vc: '#A32D2D', bg: '#FCEBEB' },
-                              { label: 'Near',  value: c.warn, vc: '#854F0B', bg: '#FAEEDA' },
-                              { label: 'OK',    value: c.ok,   vc: '#3B6D11', bg: '#EAF3DE' },
-                            ].map(s => (
-                              <div key={s.label} style={{ background: s.bg || 'var(--color-background-secondary)', borderRadius: 8, padding: '8px 14px', display: 'flex', gap: 8, alignItems: 'center' }}>
-                                <span style={{ fontSize: 18, fontWeight: 500, color: s.vc }}>{s.value}</span>
-                                <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>{s.label}</span>
-                              </div>
-                            ))}
-                          </div>
+                          <>
+                            <div style={{ display: 'flex', gap: 10, marginBottom: 18, flexWrap: 'wrap' }}>
+                              {[
+                                { label: 'Total', value: drillCatItems.length, iconBg: '#EAF3DE', iconColor: '#3B6D11', icon: 'box',            vc: 'var(--color-text-primary)' },
+                                { label: 'Low',   value: c.low,                iconBg: '#FCEBEB', iconColor: '#A32D2D', icon: 'alert-triangle',  vc: '#E24B4A' },
+                                { label: 'Near',  value: c.warn,               iconBg: '#FAEEDA', iconColor: '#854F0B', icon: 'alert-circle',    vc: '#BA7517' },
+                                { label: 'OK',    value: c.ok,                 iconBg: '#EAF3DE', iconColor: '#3B6D11', icon: 'circle-check',    vc: '#639922' },
+                              ].map(s => (
+                                <div key={s.label} style={{ ...card, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12, flex: '1 1 120px' }}>
+                                  <IconBox bg={s.iconBg} color={s.iconColor} icon={s.icon} />
+                                  <div>
+                                    <div style={{ fontSize: 22, fontWeight: 500, color: s.vc, lineHeight: 1 }}>{s.value}</div>
+                                    <div style={{ fontSize: 11, color: 'var(--color-text-secondary)', marginTop: 2 }}>{s.label}</div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 10 }}>
+                              {drillCatItems.map(b => (
+                                <ItemCard
+                                  key={`${b.node_id}-${b.item_id}`}
+                                  b={b}
+                                  itemName={getItemName(b.item_id)}
+                                  uomSymbol={getItemUom(b.item_id)}
+                                  nodeName={getNodeName(b.node_id)}
+                                  reorder={getItemReorder(b.item_id)}
+                                />
+                              ))}
+                            </div>
+                          </>
                         );
                       })()}
-
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
-                        {drillCatItems.map(b => (
-                          <ItemCard
-                            key={`${b.node_id}-${b.item_id}`}
-                            b={b}
-                            itemName={getItemName(b.item_id)}
-                            uomSymbol={getItemUom(b.item_id)}
-                            nodeName={getNodeName(b.node_id)}
-                            reorder={getItemReorder(b.item_id)}
-                          />
-                        ))}
-                      </div>
                     </>
                   )}
                 </>
               )}
 
-              {/* TABLE MODE */}
+              {/* ── TABLE MODE ── */}
               {filteredBalance.length > 0 && viewMode === 'table' && (
                 Object.entries(balanceByNode).map(([nodeId, rows]) => (
                   <div key={nodeId} style={{ marginBottom: 20 }}>
                     <h3 style={{ fontSize: 14, fontWeight: 500, marginBottom: 10, color: '#1D9E75', display: 'flex', alignItems: 'center', gap: 8 }}>
-                      📍 {getNodeName(parseInt(nodeId))}
+                      <i className="ti ti-map-pin" style={{ fontSize: 14 }} aria-hidden="true" /> {getNodeName(parseInt(nodeId))}
                       <span style={{ fontWeight: 400, color: 'var(--color-text-tertiary)', fontSize: 12 }}>{rows.length} item(s)</span>
                     </h3>
                     <div className="table-wrapper">
@@ -636,7 +715,9 @@ export default function InvReports() {
             </div>
           )}
 
-          {/* ══ MOVEMENT TAB ══ */}
+          {/* ════════════════════════════════════════
+              MOVEMENT TAB
+          ════════════════════════════════════════ */}
           {tab === 'movement' && (
             <div>
               {Object.keys(movementSummary).length === 0 && (
@@ -651,9 +732,7 @@ export default function InvReports() {
                         <th style={{ color: 'var(--color-success)' }}>In (GRN)</th>
                         <th style={{ color: 'var(--color-error)' }}>Out (Consumption)</th>
                         <th style={{ color: 'var(--color-warning)' }}>Waste</th>
-                        <th>In Value</th>
-                        <th>Out Value</th>
-                        <th>Net Qty</th>
+                        <th>In Value</th><th>Out Value</th><th>Net Qty</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -680,7 +759,9 @@ export default function InvReports() {
             </div>
           )}
 
-          {/* ══ SUPPLIER OUTSTANDING TAB ══ */}
+          {/* ════════════════════════════════════════
+              SUPPLIER OUTSTANDING TAB
+          ════════════════════════════════════════ */}
           {tab === 'outstanding' && (
             <div>
               {outstanding.length === 0 && (
@@ -688,15 +769,18 @@ export default function InvReports() {
               )}
               {outstanding.length > 0 && (
                 <>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14, marginBottom: 20 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 14, marginBottom: 20 }}>
                     {[
-                      { label: 'Total Suppliers',  value: outstanding.length, color: '#1D9E75' },
-                      { label: 'With Outstanding', value: outstanding.filter(o => parseFloat(o.outstanding) > 0).length, color: '#BA7517' },
-                      { label: 'Total Due',        value: `₹${outstanding.reduce((s, o) => s + Math.max(0, parseFloat(o.outstanding)), 0).toFixed(2)}`, color: '#E24B4A' },
+                      { label: 'Total suppliers',   value: outstanding.length, color: '#1D9E75', iconBg: '#E1F5EE', iconColor: '#0F6E56', icon: 'users' },
+                      { label: 'With outstanding',  value: outstanding.filter(o => parseFloat(o.outstanding) > 0).length, color: '#BA7517', iconBg: '#FAEEDA', iconColor: '#854F0B', icon: 'alert-circle' },
+                      { label: 'Total due',         value: `₹${outstanding.reduce((s, o) => s + Math.max(0, parseFloat(o.outstanding)), 0).toFixed(2)}`, color: '#E24B4A', iconBg: '#FCEBEB', iconColor: '#A32D2D', icon: 'currency-rupee' },
                     ].map(c => (
-                      <div key={c.label} style={{ background: 'var(--color-background-secondary)', border: '0.5px solid var(--color-border-tertiary)', borderRadius: 10, padding: '16px 20px', textAlign: 'center' }}>
-                        <div style={{ fontWeight: 500, fontSize: 22, color: c.color }}>{c.value}</div>
-                        <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)', marginTop: 4 }}>{c.label}</div>
+                      <div key={c.label} style={{ ...card, padding: '16px 20px', display: 'flex', gap: 14, alignItems: 'center' }}>
+                        <IconBox bg={c.iconBg} color={c.iconColor} icon={c.icon} />
+                        <div>
+                          <div style={{ fontWeight: 500, fontSize: 22, color: c.color, lineHeight: 1 }}>{c.value}</div>
+                          <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginTop: 4 }}>{c.label}</div>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -713,11 +797,7 @@ export default function InvReports() {
                                 ₹{Math.abs(amt).toFixed(2)}
                                 {amt < 0 && <span style={{ fontSize: 11, color: '#3B6D11', marginLeft: 4 }}>(Credit)</span>}
                               </td>
-                              <td>
-                                <Badge variant={amt > 0 ? 'error' : amt < 0 ? 'success' : 'default'}>
-                                  {amt > 0 ? 'Due' : amt < 0 ? 'Advance' : 'Settled'}
-                                </Badge>
-                              </td>
+                              <td><Badge variant={amt > 0 ? 'error' : amt < 0 ? 'success' : 'default'}>{amt > 0 ? 'Due' : amt < 0 ? 'Advance' : 'Settled'}</Badge></td>
                             </tr>
                           );
                         })}
@@ -732,4 +812,30 @@ export default function InvReports() {
       )}
     </div>
   );
+}
+
+// ── Pure utility functions (outside component, no hooks) ──────
+function getNodeName_static(nodeId, nodes) {
+  if (!nodeId || !nodes?.length) return `Node #${nodeId}`;
+  const s = String(nodeId);
+  let n = nodes.find(n => String(n.node_id) === s);
+  if (n) return n.node_name;
+  const num = s.replace('b_', '');
+  n = nodes.find(n => String(n.node_id).replace('b_', '') === num);
+  return n ? n.node_name : `Node #${nodeId}`;
+}
+
+function formatDate(dateStr) {
+  if (!dateStr) return '—';
+  try {
+    return new Date(dateStr).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+  } catch { return dateStr; }
+}
+
+function timeAgo(date) {
+  if (!date) return '';
+  const diff = Math.floor((Date.now() - new Date(date)) / 1000);
+  if (diff < 3600)  return `${Math.floor(diff / 60)}m ago`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+  return `${Math.floor(diff / 86400)}d ago`;
 }
