@@ -210,6 +210,7 @@ export default function InvReports() {
 
 
   const [tab,         setTab]         = useState('balance');
+  // Child branch: default filter to their own node so data loads correctly
   const [filterNode,  setFilterNode]  = useState('');
   const [filterCat,   setFilterCat]   = useState('');
   const [viewMode,    setViewMode]    = useState('dashboard');
@@ -308,6 +309,15 @@ export default function InvReports() {
 
   useEffect(() => { load(); }, [cid]);
   useEffect(() => { if (nodes.length && cid) load(); }, [nodes.length]);
+
+  // Auto-restrict child branch: set their node as filter so balance loads correctly
+  useEffect(() => {
+    if (isChildBranch && cid && nodes.length) {
+      // Find the node matching this child's cid
+      const myNode = nodes.find(n => String(n.node_id).replace('b_','') === String(cid));
+      if (myNode && !filterNode) setFilterNode(String(myNode.node_id));
+    }
+  }, [isChildBranch, cid, nodes.length]);
   useEffect(() => { if (tab === 'balance')     loadBalance();    }, [tab, cid, filterNode]);
   useEffect(() => { if (tab === 'movement')    loadMovement();   }, [tab, cid]);
   useEffect(() => { if (tab === 'outstanding') loadOutstanding();}, [tab, cid]);
@@ -448,7 +458,10 @@ export default function InvReports() {
             <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-text-tertiary)', marginBottom: 5, letterSpacing: '0.05em' }}>FILTER BY NODE</div>
             <select className="input select" value={filterNode} onChange={e => { setFilterNode(e.target.value); setDrillNode(null); setDrillCat(null); }} style={{ padding: '7px 12px', fontSize: 13, borderRadius: 8 }}>
               <option value="">All Nodes</option>
-              {nodes.map(n => <option key={n.node_id} value={n.node_id}>{n.node_label || n.node_name}</option>)}
+              {(isChildBranch
+                ? nodes.filter(n => String(n.node_id).replace('b_','') === String(cid))
+                : nodes
+              ).map(n => <option key={n.node_id} value={n.node_id}>{n.node_label || n.node_name}</option>)}
             </select>
           </div>
         )}
@@ -503,7 +516,7 @@ export default function InvReports() {
                   {drillLevel === 0 && (
                     <>
                       {/* 4 hero stat cards */}
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0,1fr))', gap: 12, marginBottom: 24 }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 24, width: '100%' }}>
                         {[
                           { emoji: '📦', accent: PALETTE.green.solid, lightBg: PALETTE.green.light, val: visibleBalance.length,             lbl: 'Total stock items', trend: '+8.2%', up: true  },
                           { emoji: '📍', accent: PALETTE.teal.solid,  lightBg: PALETTE.teal.light,  val: Object.keys(visibleBalanceByNode).length, lbl: 'Active nodes',      trend: '+12%',  up: true  },
@@ -528,7 +541,7 @@ export default function InvReports() {
                       <SectionHead title="Branches & locations" hint="click a card to drill in" />
 
                       {/* Node cards grid */}
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 12, marginBottom: 24 }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(0, 1fr))', gap: 12, marginBottom: 24 }}>
                         {Object.entries(visibleBalanceByNode)
                           .sort((a, b) => { const o = { low: 0, warn: 1, ok: 2 }; return o[worstOf(a[1], reorderFn)] - o[worstOf(b[1], reorderFn)]; })
                           .map(([nodeId, rows]) => {
@@ -571,7 +584,7 @@ export default function InvReports() {
                       </div>
 
                       {/* Bottom row: Low Stock Alerts + Recent Activity */}
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, width: '100%' }}>
 
                         {/* Low Stock Alerts */}
                         <div style={{ ...CARD }}>

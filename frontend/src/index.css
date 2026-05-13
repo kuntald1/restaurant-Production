@@ -112,7 +112,7 @@ html, body, #root { height: 100%; font-family: 'DM Sans', sans-serif; background
 .logout-btn-collapsed:hover { background: var(--error-bg); color: var(--error); }
 
 /* PAGE */
-.page { padding: 28px 32px; max-width: 1400px; }
+.page { padding: 28px 32px; max-width: 1400px; width: 100%; box-sizing: border-box; }
 .page-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 24px; gap: 16px; }
 .page-title  { font-family: 'DM Serif Display', serif; font-size: 26px; font-weight: 400; color: var(--green-800); line-height: 1.2; }
 .page-subtitle { font-size: 13px; color: var(--text-3); margin-top: 3px; }
