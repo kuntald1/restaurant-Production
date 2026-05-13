@@ -55,7 +55,7 @@ const countBy = (rows, reorderFn) => {
 // ── Design tokens ─────────────────────────────────────────────
 const CARD = {
   background: '#ffffff',
-  border: '1px solid #e5e7eb',
+  border: '1px solid #f0f0f0',
   borderRadius: 14,
   padding: '18px 20px',
 };
@@ -519,7 +519,7 @@ export default function InvReports() {
                       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 24, width: '100%' }}>
                         {[
                           { emoji: '📦', accent: PALETTE.green.solid, lightBg: PALETTE.green.light, val: visibleBalance.length,             lbl: 'Total stock items', trend: '+8.2%', up: true  },
-                          { emoji: '📍', accent: PALETTE.teal.solid,  lightBg: PALETTE.teal.light,  val: Object.keys(visibleBalanceByNode).length, lbl: 'Active nodes',      trend: '+12%',  up: true  },
+                          { emoji: '📍', accent: PALETTE.teal.solid,  lightBg: PALETTE.teal.light,  val: Object.keys(visibleBalanceByNode).length, lbl: 'Active branches',      trend: '+12%',  up: true  },
                           { emoji: '⚠️', accent: PALETTE.red.solid,   lightBg: PALETTE.red.light,   val: allLow,                            lbl: 'Low stock alerts',  trend: '+' + allLow,  up: false },
                           { emoji: '🔔', accent: PALETTE.amber.solid, lightBg: PALETTE.amber.light, val: allWarn,                           lbl: 'Near reorder',      trend: '+' + allWarn, up: false },
                         ].map((c, i) => (
@@ -674,7 +674,7 @@ export default function InvReports() {
                         return (
                           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0,1fr))', gap: 12, marginBottom: 24 }}>
                             {[
-                              { emoji: '📦', accent: PALETTE.green.solid, lightBg: PALETTE.green.light, val: drillNodeBalance.length, lbl: 'Items in node' },
+                              { emoji: '📦', accent: PALETTE.green.solid, lightBg: PALETTE.green.light, val: drillNodeBalance.length, lbl: 'Items in branch' },
                               { emoji: '⚠️', accent: PALETTE.red.solid,   lightBg: PALETTE.red.light,   val: c.low,  lbl: 'Low stock'   },
                               { emoji: '🔔', accent: PALETTE.amber.solid, lightBg: PALETTE.amber.light, val: c.warn, lbl: 'Near ROL'    },
                               { emoji: '✅', accent: PALETTE.green.solid, lightBg: PALETTE.green.light, val: c.ok,   lbl: 'Healthy'     },
