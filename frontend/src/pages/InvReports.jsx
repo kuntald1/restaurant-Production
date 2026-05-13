@@ -164,7 +164,7 @@ function Breadcrumb({ items, onNavigate }) {
 
 // Level stepper
 function LevelStepper({ current }) {
-  const steps = ['All nodes', 'Branch detail', 'Item view'];
+  const steps = ['All branches', 'Branch detail', 'Item view'];
   return (
     <div style={{ display: 'flex', alignItems: 'center', marginBottom: 22 }}>
       {steps.map((label, i) => {
@@ -413,7 +413,7 @@ export default function InvReports() {
     if (m.type === 'waste_out')       { movementSummary[m.item_id].waste += parseFloat(m.qty || 0); }
   });
 
-  const breadcrumbItems = [{ label: 'All nodes' }];
+  const breadcrumbItems = [{ label: 'All branches' }];
   if (drillNode !== null) breadcrumbItems.push({ label: getNodeName(drillNode) });
   if (drillCat  !== null) breadcrumbItems.push({ label: getCatName(drillCat) });
 
@@ -455,9 +455,9 @@ export default function InvReports() {
       <div style={{ display: 'flex', gap: 12, marginBottom: 22, flexWrap: 'wrap', alignItems: 'flex-end' }}>
         {(tab === 'balance' || tab === 'movement') && (
           <div>
-            <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-text-tertiary)', marginBottom: 5, letterSpacing: '0.05em' }}>FILTER BY NODE</div>
+            <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-text-tertiary)', marginBottom: 5, letterSpacing: '0.05em' }}>FILTER BY BRANCH</div>
             <select className="input select" value={filterNode} onChange={e => { setFilterNode(e.target.value); setDrillNode(null); setDrillCat(null); }} style={{ padding: '7px 12px', fontSize: 13, borderRadius: 8 }}>
-              <option value="">All Nodes</option>
+              <option value="">All Branches</option>
               {(isChildBranch
                 ? nodes.filter(n => String(n.node_id).replace('b_','') === String(cid))
                 : nodes
