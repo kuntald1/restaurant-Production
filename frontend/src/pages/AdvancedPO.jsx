@@ -131,7 +131,7 @@ function SmartPOTab({ cid, pos, nodes, categories, items, getNodeName, showToast
     setAccepting(false);
   };
 
-  const draftPos = pos.filter(p => ['draft','sent'].includes(p.status));
+  const draftPos = pos.filter(p => p.status === 'draft');
 
   return (
     <div>
