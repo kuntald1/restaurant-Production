@@ -54,8 +54,8 @@ const countBy = (rows, reorderFn) => {
 
 // ── Design tokens ─────────────────────────────────────────────
 const CARD = {
-  background: 'var(--color-background-primary)',
-  border: '1px solid var(--color-border-tertiary)',
+  background: '#ffffff',
+  border: '1px solid #e5e7eb',
   borderRadius: 14,
   padding: '18px 20px',
 };
@@ -127,7 +127,7 @@ function ItemCard({ b, itemName, uomSymbol, nodeName, reorder }) {
   const status = getStatus(onHand, reorder);
   const s      = STATUS[status];
   return (
-    <div style={{ ...CARD, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12, borderLeft: `3px solid ${s.solid}` }}>
+    <div style={{ ...CARD, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12, background: '#ffffff', borderLeft: `3px solid ${s.solid}` }}>
       <div style={{ width: 36, height: 36, borderRadius: 9, background: s.light, border: '2px solid ' + s.border, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, flexShrink: 0 }}>📦</div>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text-primary)', marginBottom: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{itemName}</div>
@@ -478,7 +478,7 @@ export default function InvReports() {
                         ].map((c, i) => (
                           <div key={i} style={{ ...CARD, borderTop: '3px solid ' + c.accent }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-                              <div style={{ width: 36, height: 36, borderRadius: 9, background: c.lightBg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18 }}>
+                              <div style={{ width: 36, height: 36, borderRadius: 9, background: '#f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18 }}>
                                 {c.emoji}
                               </div>
                               <span style={{ fontSize: 12, fontWeight: 600, color: c.up ? PALETTE.green.text : PALETTE.red.text }}>
@@ -506,7 +506,7 @@ export default function InvReports() {
                             return (
                               <div key={nodeId} onClick={() => setDrillNode(nodeId)} style={{
                                 ...CARD, cursor: 'pointer',
-                                borderLeft: `4px solid ${s.solid}`,
+                                borderLeft: `4px solid ${s.solid}`, background: '#ffffff',
                                 transition: 'box-shadow .15s',
                               }}
                                 onMouseEnter={e => e.currentTarget.style.boxShadow = '0 2px 12px rgba(0,0,0,0.08)'}
@@ -550,7 +550,7 @@ export default function InvReports() {
 
                           {lowStock.length === 0 ? (
                             <div style={{ textAlign: 'center', padding: '24px 0' }}>
-                              <div style={{ fontSize: 44, textAlign: 'center' }}>✅</div>
+                              <div style={{ fontSize: 44, textAlign: 'center', marginBottom: 8 }}>✅</div>
                               <div style={{ fontSize: 13, color: 'var(--color-text-secondary)', marginTop: 10 }}>All stock levels healthy</div>
                             </div>
                           ) : (
@@ -599,7 +599,7 @@ export default function InvReports() {
                           ) : (
                             activity.map((a, idx) => (
                               <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 0', borderTop: idx === 0 ? 'none' : '1px solid var(--color-border-tertiary)' }}>
-                                <div style={{ width: 36, height: 36, borderRadius: 9, background: a.lightBg, border: '2px solid ' + a.borderColor, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, flexShrink: 0 }}>{a.emoji}</div>
+                                <div style={{ width: 36, height: 36, borderRadius: 9, background: '#f3f4f6', border: '1px solid #e5e7eb', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, flexShrink: 0 }}>{a.emoji}</div>
                                 <div style={{ flex: 1, minWidth: 0 }}>
                                   <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.label}</div>
                                   <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>{a.sub}</div>
@@ -631,7 +631,7 @@ export default function InvReports() {
                               { emoji: '✅', accent: PALETTE.green.solid, lightBg: PALETTE.green.light, val: c.ok,   lbl: 'Healthy'     },
                             ].map((s, i) => (
                               <div key={i} style={{ ...CARD, borderTop: '3px solid ' + s.accent }}>
-                                <div style={{ width: 36, height: 36, borderRadius: 9, background: s.lightBg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, marginBottom: 12 }}>{s.emoji}</div>
+                                <div style={{ width: 36, height: 36, borderRadius: 9, background: '#f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, marginBottom: 12 }}>{s.emoji}</div>
                                 <div style={{ fontSize: 28, fontWeight: 700, color: 'var(--color-text-primary)', lineHeight: 1, marginBottom: 4 }}>{s.val}</div>
                                 <div style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>{s.lbl}</div>
                               </div>
@@ -655,7 +655,7 @@ export default function InvReports() {
                             const s      = STATUS[worst];
                             return (
                               <div key={catId} onClick={() => setDrillCat(catId)} style={{
-                                ...CARD, cursor: 'pointer', borderLeft: `4px solid ${s.solid}`,
+                                ...CARD, cursor: 'pointer', background: '#ffffff', borderLeft: `4px solid ${s.solid}`,
                               }}
                                 onMouseEnter={e => e.currentTarget.style.boxShadow = '0 2px 12px rgba(0,0,0,0.08)'}
                                 onMouseLeave={e => e.currentTarget.style.boxShadow = 'none'}
@@ -703,7 +703,7 @@ export default function InvReports() {
                                 { emoji: '✅', accent: PALETTE.green.solid, lightBg: PALETTE.green.light, val: c.ok,                lbl: 'Healthy'  },
                               ].map((s, i) => (
                                 <div key={i} style={{ ...CARD, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
-                                  <div style={{ width: 36, height: 36, borderRadius: 9, background: s.lightBg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, flexShrink: 0 }}>{s.emoji}</div>
+                                  <div style={{ width: 36, height: 36, borderRadius: 9, background: '#f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, flexShrink: 0 }}>{s.emoji}</div>
                                   <div>
                                     <div style={{ fontSize: 24, fontWeight: 700, color: 'var(--color-text-primary)', lineHeight: 1 }}>{s.val}</div>
                                     <div style={{ fontSize: 11, color: 'var(--color-text-secondary)', marginTop: 3 }}>{s.lbl}</div>
@@ -823,7 +823,7 @@ export default function InvReports() {
                       { emoji: '💰', accent: PALETTE.red.solid,   lightBg: PALETTE.red.light,   val: `₹${outstanding.reduce((s, o) => s + Math.max(0, parseFloat(o.outstanding)), 0).toFixed(2)}`,                  lbl: 'Total due'        },
                     ].map((c, i) => (
                       <div key={i} style={{ ...CARD, borderTop: '3px solid ' + c.accent, display: 'flex', gap: 14, alignItems: 'center' }}>
-                        <div style={{ width: 40, height: 40, borderRadius: 10, background: c.lightBg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, flexShrink: 0 }}>{c.emoji}</div>
+                        <div style={{ width: 40, height: 40, borderRadius: 10, background: '#f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, flexShrink: 0 }}>{c.emoji}</div>
                         <div>
                           <div style={{ fontWeight: 700, fontSize: 22, color: 'var(--color-text-primary)', lineHeight: 1 }}>{c.val}</div>
                           <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginTop: 5 }}>{c.lbl}</div>
