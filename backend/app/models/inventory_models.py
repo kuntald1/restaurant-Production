@@ -527,3 +527,56 @@ class AdvAccuracyLog(Base):
     rule_correction   = Column(Numeric(5,3), nullable=True)     # recommended new multiplier
     is_applied        = Column(Boolean, default=False)          # admin clicked Apply
     created_at        = Column(DateTime, server_default=func.now())
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# PRODUCTION MODULE — Central Kitchen Production Entry
+# ══════════════════════════════════════════════════════════════════════════════
+
+class ProductionEntry(Base):
+    """
+    CK produces finished goods from raw materials.
+    On posting:
+      - Raw material stock reduces at CK node
+      - Finished goods stock increases at CK node
+    """
+    __tablename__ = "inv_production_entry"
+
+    production_id     = Column(BigInteger, Identity(), primary_key=True)
+    company_unique_id = Column(BigInteger, nullable=False)
+    production_number = Column(String(50), nullable=False)
+    node_id           = Column(BigInteger, ForeignKey("inv_node.node_id", ondelete="SET NULL"), nullable=True)  # CK node
+    recipe_id         = Column(BigInteger, ForeignKey("inv_recipe.recipe_id", ondelete="SET NULL"), nullable=True)
+    finished_item_id  = Column(BigInteger, ForeignKey("inv_item.item_id", ondelete="SET NULL"), nullable=True)  # finished good produced
+    production_date   = Column(Date, nullable=False)
+    planned_qty       = Column(Numeric(12, 3), nullable=False)   # how many units planned
+    produced_qty      = Column(Numeric(12, 3), nullable=True)    # actual qty produced (on post)
+    yield_uom_id      = Column(BigInteger, ForeignKey("inv_unit_of_measure.uom_id", ondelete="SET NULL"), nullable=True)
+    status            = Column(String(20), default="draft", nullable=False)  # draft | posted
+    notes             = Column(Text, nullable=True)
+    total_raw_cost    = Column(Numeric(14, 2), default=0)        # sum of raw material costs
+    is_active         = Column(Boolean, default=True, nullable=False)
+    created_at        = Column(DateTime, server_default=func.now(), nullable=False)
+    created_by        = Column(String(200), nullable=True)
+    updated_at        = Column(DateTime, nullable=True)
+    posted_at         = Column(DateTime, nullable=True)
+    posted_by         = Column(String(200), nullable=True)
+
+
+class ProductionEntryItem(Base):
+    """
+    Raw material lines consumed in a production entry.
+    Auto-populated from recipe when production entry is created.
+    Can be overridden manually before posting.
+    """
+    __tablename__ = "inv_production_entry_item"
+
+    prod_item_id      = Column(BigInteger, Identity(), primary_key=True)
+    company_unique_id = Column(BigInteger, nullable=False)
+    production_id     = Column(BigInteger, ForeignKey("inv_production_entry.production_id", ondelete="CASCADE"), nullable=False)
+    item_id           = Column(BigInteger, ForeignKey("inv_item.item_id", ondelete="SET NULL"), nullable=True)
+    required_qty      = Column(Numeric(12, 3), nullable=False)   # calculated from recipe × planned_qty
+    actual_qty        = Column(Numeric(12, 3), nullable=True)    # actual used (can differ)
+    uom_id            = Column(BigInteger, ForeignKey("inv_unit_of_measure.uom_id", ondelete="SET NULL"), nullable=True)
+    unit_cost         = Column(Numeric(12, 2), default=0)
+    is_active         = Column(Boolean, default=True, nullable=False)
