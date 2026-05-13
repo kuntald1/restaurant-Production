@@ -248,13 +248,22 @@ export default function InvReports() {
   const { nodes } = useInventoryNodes(cid, selectedCompany, allCompanies);
 
   // ── Loaders ───────────────────────────────────────────────
-  const buildActivity = (grnData, transferData, consData, nodesList) => {
+  const buildActivity = (grnData, transferData, consData, nodesList, childCid = null) => {
     const feed = [];
-    grnData.filter(g => g.status === 'posted').forEach(g => {
+    // childCid: if set, only include activities for that branch/node
+    // GRN: filter by node_id === childCid (branch's company_unique_id)
+    const grns = childCid
+      ? grnData.filter(g => g.status === 'posted' && Number(g.node_id) === Number(childCid))
+      : grnData.filter(g => g.status === 'posted');
+    grns.forEach(g => {
       const qty = (g.items || []).reduce((s, it) => s + parseFloat(it.received_qty || 0), 0);
       feed.push({ label: 'GRN posted', sub: `${staticNodeName(g.node_id, nodesList)} · ${fmtDate(g.grn_date)}`, qty: `+${qty.toFixed(0)}`, color: PALETTE.green.solid, lightBg: PALETTE.green.light, borderColor: PALETTE.green.border, emoji: '📥', ts: new Date(g.grn_date) });
     });
-    transferData.forEach(t => {
+    // Transfers: include if from_node OR to_node matches childCid
+    const transfers = childCid
+      ? transferData.filter(t => Number(t.from_node_id) === Number(childCid) || Number(t.to_node_id) === Number(childCid))
+      : transferData;
+    transfers.forEach(t => {
       const qty  = (t.items || []).reduce((s, it) => s + parseFloat(it.requested_qty || 0), 0);
       const isOk = t.status === 'received';
       const isRj = t.status === 'rejected';
@@ -263,7 +272,11 @@ export default function InvReports() {
       const bc   = isOk ? PALETTE.green.border : isRj ? PALETTE.red.border : PALETTE.amber.border;
       feed.push({ label: isOk ? 'Transfer received' : isRj ? 'Transfer rejected' : 'Transfer dispatched', sub: fmtDate(t.transfer_date), qty: `${qty.toFixed(0)}`, color: clr, lightBg: lb, borderColor: bc, emoji: '🔄', ts: new Date(t.transfer_date) });
     });
-    consData.forEach(c => {
+    // Consumption: filter by node_id === childCid
+    const consList = childCid
+      ? consData.filter(c => Number(c.node_id) === Number(childCid))
+      : consData;
+    consList.forEach(c => {
       const qty = (c.items || []).reduce((s, it) => s + parseFloat(it.qty_consumed || 0), 0);
       feed.push({ label: 'Consumption posted', sub: fmtDate(c.consumption_date), qty: `-${qty.toFixed(0)}`, color: PALETTE.red.solid, lightBg: PALETTE.red.light, borderColor: PALETTE.red.border, emoji: '📤', ts: new Date(c.consumption_date) });
     });
@@ -292,7 +305,7 @@ export default function InvReports() {
       setItems(itemsData);
       setLowStock(lsR.status    === 'fulfilled' ? (lsR.value    || []) : []);
       setCategories(catsR.status === 'fulfilled' ? (catsR.value || []) : []);
-      setActivity(buildActivity(grnData, transferData, consData, nodes));
+      setActivity(buildActivity(grnData, transferData, consData, nodes, isChildBranch ? cid : null));
     } catch {}
     setLoading(false);
   };
