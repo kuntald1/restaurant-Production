@@ -9,7 +9,7 @@
  */
 
 import { useEffect, useState } from 'react';
-import { productionAPI, invItemAPI, invCategoryAPI, invUomAPI } from '../services/api';
+import { productionAPI, invItemAPI, invCategoryAPI, invUomAPI, invRecipeAPI } from '../services/api';
 import { useInventoryNodes } from './useInventoryNodes';
 import { Spinner, PageHeader, Badge, Table, ConfirmDialog } from '../components/UI';
 import { useApp } from '../context/useApp';
@@ -66,8 +66,7 @@ export default function Production() {
   // Load recipes from inv_recipe via items API (reuse item API endpoint)
   const loadRecipes = async () => {
     try {
-      const res = await fetch(`${import.meta.env.VITE_API_URL || ''}/inventory/recipe/list/${cid}`);
-      const data = await res.json();
+      const data = await invRecipeAPI.getAll(cid);
       setRecipes(data || []);
     } catch { setRecipes([]); }
   };
