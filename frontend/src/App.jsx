@@ -38,6 +38,7 @@ import Subscriptions from './pages/Subscriptions';
 import InvItemMaster       from './pages/InvItemMaster';
 import InvSuppliers        from './pages/InvSuppliers';
 import InvPurchase         from './pages/InvPurchase';
+import AdvancedPO          from './pages/AdvancedPO';
 import InvTransfer         from './pages/InvStockTransfer';
 import InvConsumptionWaste from './pages/InvConsumptionWaste';
 import InvStockAudit       from './pages/InvStockAudit';
@@ -89,6 +90,7 @@ const URL_TO_PAGE = {
   '/inventory/items':             InvItemMaster,
   '/inventory/suppliers':         InvSuppliers,
   '/inventory/purchase':          InvPurchase,
+  '/inventory/advanced-po':       AdvancedPO,
   '/inventory/transfer':          InvTransfer,
   '/inventory/consumption':       InvConsumptionWaste,
   '/inventory/audit':             InvStockAudit,

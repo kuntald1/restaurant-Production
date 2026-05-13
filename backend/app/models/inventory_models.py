@@ -430,3 +430,100 @@ class StockAuditItem(Base):
     variance_value    = Column(Numeric(14, 2), default=0)
     notes             = Column(Text, nullable=True)
     is_active         = Column(Boolean, default=True, nullable=False)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ADVANCED PO — Rule Engine Models (Phase 1.5)
+# ══════════════════════════════════════════════════════════════════════════════
+
+class AdvWeatherRule(Base):
+    """Weather-based multiplier rules per item category."""
+    __tablename__ = "adv_weather_rule"
+
+    rule_id           = Column(BigInteger, Identity(), primary_key=True)
+    company_unique_id = Column(BigInteger, nullable=False)
+    condition         = Column(String(20), nullable=False)   # hot|rain|cold
+    temp_min          = Column(Numeric(5,1), nullable=True)  # null = no lower bound
+    temp_max          = Column(Numeric(5,1), nullable=True)  # null = no upper bound
+    rain_threshold    = Column(Numeric(5,2), nullable=True)  # rain probability 0-1
+    item_category_id  = Column(BigInteger, ForeignKey("inv_item_category.item_category_id", ondelete="CASCADE"), nullable=False)
+    multiplier        = Column(Numeric(5,3), nullable=False, default=1.0)
+    description       = Column(String(200), nullable=True)
+    is_active         = Column(Boolean, default=True, nullable=False)
+    created_at        = Column(DateTime, server_default=func.now())
+    updated_at        = Column(DateTime, nullable=True)
+
+
+class AdvOccasion(Base):
+    """Global occasions (Eid, Durga Puja, Diwali, etc.)."""
+    __tablename__ = "adv_occasion"
+
+    occasion_id   = Column(BigInteger, Identity(), primary_key=True)
+    name          = Column(String(100), nullable=False)
+    month         = Column(Integer, nullable=True)         # 1-12, null = floating
+    day           = Column(Integer, nullable=True)         # 1-31, null = floating
+    days_before   = Column(Integer, default=3)             # effect starts N days before
+    days_after    = Column(Integer, default=1)             # effect ends N days after
+    description   = Column(String(300), nullable=True)
+    is_active     = Column(Boolean, default=True, nullable=False)
+    created_at    = Column(DateTime, server_default=func.now())
+
+
+class AdvOccasionRule(Base):
+    """Multiplier rules per category per occasion."""
+    __tablename__ = "adv_occasion_rule"
+
+    occ_rule_id       = Column(BigInteger, Identity(), primary_key=True)
+    occasion_id       = Column(BigInteger, ForeignKey("adv_occasion.occasion_id", ondelete="CASCADE"), nullable=False)
+    item_category_id  = Column(BigInteger, ForeignKey("inv_item_category.item_category_id", ondelete="CASCADE"), nullable=False)
+    multiplier        = Column(Numeric(5,3), nullable=False, default=1.0)
+    is_active         = Column(Boolean, default=True, nullable=False)
+
+
+class AdvBranchOccasion(Base):
+    """Which occasions each branch has opted into."""
+    __tablename__ = "adv_branch_occasion"
+
+    id                = Column(BigInteger, Identity(), primary_key=True)
+    company_unique_id = Column(BigInteger, nullable=False)
+    occasion_id       = Column(BigInteger, ForeignKey("adv_occasion.occasion_id", ondelete="CASCADE"), nullable=False)
+    is_active         = Column(Boolean, default=True, nullable=False)
+    updated_at        = Column(DateTime, server_default=func.now())
+
+
+class AdvPoSuggestion(Base):
+    """AI-generated quantity suggestions per PO item."""
+    __tablename__ = "adv_po_suggestion"
+
+    suggestion_id     = Column(BigInteger, Identity(), primary_key=True)
+    company_unique_id = Column(BigInteger, nullable=False)
+    po_id             = Column(BigInteger, ForeignKey("inv_purchase_order.po_id", ondelete="CASCADE"), nullable=True)
+    node_id           = Column(BigInteger, nullable=True)
+    item_id           = Column(BigInteger, ForeignKey("inv_item.item_id", ondelete="SET NULL"), nullable=True)
+    po_date           = Column(Date, nullable=False)
+    base_qty_30d      = Column(Numeric(12,3), nullable=False, default=0)  # 30-day avg
+    weather_multiplier= Column(Numeric(5,3), nullable=False, default=1.0)
+    occasion_multiplier=Column(Numeric(5,3), nullable=False, default=1.0)
+    final_multiplier  = Column(Numeric(5,3), nullable=False, default=1.0)
+    suggested_qty     = Column(Numeric(12,3), nullable=False, default=0)
+    accepted_qty      = Column(Numeric(12,3), nullable=True)   # what manager finalised
+    reason            = Column(String(500), nullable=True)      # "Hot 45°C +50% + Durga Puja +30%"
+    weather_data      = Column(Text, nullable=True)             # JSON snapshot of weather
+    created_at        = Column(DateTime, server_default=func.now())
+
+
+class AdvAccuracyLog(Base):
+    """Phase 1.5 — tracks suggestion vs actual to recommend rule corrections."""
+    __tablename__ = "adv_accuracy_log"
+
+    log_id            = Column(BigInteger, Identity(), primary_key=True)
+    company_unique_id = Column(BigInteger, nullable=False)
+    suggestion_id     = Column(BigInteger, ForeignKey("adv_po_suggestion.suggestion_id", ondelete="SET NULL"), nullable=True)
+    item_id           = Column(BigInteger, ForeignKey("inv_item.item_id", ondelete="SET NULL"), nullable=True)
+    po_date           = Column(Date, nullable=False)
+    suggested_qty     = Column(Numeric(12,3), nullable=False)
+    actual_sold_qty   = Column(Numeric(12,3), nullable=True)    # from order_item after the fact
+    variance_pct      = Column(Numeric(8,3), nullable=True)     # (actual-suggested)/suggested*100
+    rule_correction   = Column(Numeric(5,3), nullable=True)     # recommended new multiplier
+    is_applied        = Column(Boolean, default=False)          # admin clicked Apply
+    created_at        = Column(DateTime, server_default=func.now())

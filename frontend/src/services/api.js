@@ -329,3 +329,28 @@ export const invReportsAPI = {
   lowStock:            (companyId)         => request('GET', `/inventory/report/low-stock/${companyId}`),
   supplierOutstanding: (companyId)         => request('GET', `/inventory/report/supplier-outstanding/${companyId}`),
 };
+
+// ── Advanced PO — Rule Engine (Phase 1.5) ────────────────────
+export const advPoAPI = {
+  // Weather rules
+  getWeatherRules:  (cid)                => request('GET',    `/adv-po/weather-rules/${cid}`),
+  createWeatherRule:(data)               => request('POST',   '/adv-po/weather-rules', data),
+  updateWeatherRule:(id, data)           => request('PUT',    `/adv-po/weather-rules/${id}`, data),
+  deleteWeatherRule:(id)                 => request('DELETE', `/adv-po/weather-rules/${id}`),
+  // Occasions
+  getOccasions:     ()                   => request('GET',    '/adv-po/occasions'),
+  getOccasionRules: (occ_id)            => request('GET',    `/adv-po/occasions/${occ_id}/rules`),
+  upsertOccasionRule:(occ_id, data)     => request('POST',   `/adv-po/occasions/${occ_id}/rules`, data),
+  // Branch occasions
+  getBranchOccasions:(cid)              => request('GET',    `/adv-po/branch-occasions/${cid}`),
+  setBranchOccasion: (cid, data)        => request('POST',   `/adv-po/branch-occasions/${cid}`, data),
+  // Suggestions
+  generateSuggestions:(cid, nid, poId, poDate) => request('POST', `/adv-po/suggest/${cid}/${nid}/${poId}?po_date=${poDate}`),
+  getSuggestions:    (poId)             => request('GET',    `/adv-po/suggestions/${poId}`),
+  acceptSuggestions: (poId, items)      => request('POST',   `/adv-po/suggestions/${poId}/accept`, { items }),
+  // Accuracy (Phase 1.5)
+  getAccuracyReport: (cid, days)        => request('GET',    `/adv-po/accuracy/${cid}?days_back=${days || 14}`),
+  applyCorrection:   (data)             => request('POST',   '/adv-po/accuracy/apply-correction', data),
+  // Weather preview
+  previewWeather:    (cid)              => request('GET',    `/adv-po/weather-preview/${cid}`),
+};

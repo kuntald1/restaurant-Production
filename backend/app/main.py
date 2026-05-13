@@ -56,3 +56,5 @@ app.include_router(whatsapp_log_router.router)
 app.include_router(contact_lead_router.router)
 app.include_router(subscription_router.router)
 app.include_router(inventory_router.router)
+from app.routers import adv_po_router
+app.include_router(adv_po_router.router)
