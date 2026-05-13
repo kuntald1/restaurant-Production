@@ -28,7 +28,8 @@ from app.models.company_model import Company
 
 logger = logging.getLogger(__name__)
 
-OPENWEATHER_API_KEY = "4e2b8383f948f310f98b44e4b54b1ec9"   # openweathermap.org free tier
+import os
+OPENWEATHER_API_KEY = os.getenv("OPENWEATHER_API_KEY", "")   # openweathermap.org free tier
 OPENWEATHER_URL     = "https://api.openweathermap.org/data/2.5/forecast"
 
 
