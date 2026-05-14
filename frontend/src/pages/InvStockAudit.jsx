@@ -12,13 +12,22 @@ import { useApp } from '../context/useApp';
 const today = () => new Date().toISOString().split('T')[0];
 
 export default function InvStockAudit() {
-  const { selectedCompany, showToast, user } = useApp();
+  const { selectedCompany, showToast, user, allCompanies } = useApp();
   const cid = selectedCompany?.company_unique_id;
 
   const [audits,  setAudits]  = useState([]);
   const [items,   setItems]   = useState([]);
   const [loading, setLoading] = useState(false);
   const { nodes } = useInventoryNodes(cid);
+
+  const isAdmin = !!user?.is_admin || !!user?.is_super_admin;
+  const myParentId = selectedCompany?.parant_company_unique_id;
+  const isChildBranch = !!(myParentId && Number(myParentId) !== 0);
+  const visibleNodes = (() => {
+    if (isAdmin) return nodes;
+    if (isChildBranch) return nodes.filter(n => String(n.node_id).replace('b_','') === String(cid));
+    return nodes.filter(n => !String(n.node_id).startsWith('b_') || n.depth === 1 || Number(String(n.node_id).replace('b_','')) === Number(cid));
+  })();
   const [modal,   setModal]   = useState(null);  // 'create' | 'view'
   const [viewAudit, setViewAudit] = useState(null);
   const [confirm, setConfirm] = useState(null);
@@ -54,12 +63,18 @@ export default function InvStockAudit() {
     setAuditNode(nodeId);
     if (!nodeId) { setAuditLines([]); return; }
     try {
+      // Items from root company (master data)
+      // Balance scoped to selected node only
+      const nodeInt = parseInt(String(nodeId).replace('b_',''));
       const [balance, allItems] = await Promise.all([
-        invStockAPI.getBalance(cid, parseInt(nodeId)),
+        invStockAPI.getBalance(cid, nodeInt),
         invItemAPI.getAll(cid),
       ]);
       const balMap = {};
-      (balance || []).forEach(b => { balMap[b.item_id] = parseFloat(b.qty_on_hand); });
+      // Only include balance rows matching this specific node
+      (balance || []).filter(b => String(b.node_id) === String(nodeInt)).forEach(b => {
+        balMap[b.item_id] = parseFloat(b.qty_on_hand);
+      });
 
       // Show ALL items — with balance (even negative) or zero if no balance
       const lines = (allItems || []).map(it => {
@@ -175,10 +190,10 @@ export default function InvStockAudit() {
         <Modal title="New Stock Audit" onClose={() => setModal(null)} size="lg">
           <form onSubmit={handleSubmit}>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
-              <FormField label="Node (Location)" required>
+              <FormField label="Branch / Node" required>
                 <Select value={auditNode} onChange={(e) => handleNodeSelect(e.target.value)} required>
                   <option value="">— Select Node —</option>
-                  {nodes.map(n => <option key={n.node_id} value={n.node_id}>{n.node_name} ({n.node_type})</option>)}
+                  {visibleNodes.map(n => <option key={n.node_id} value={n.node_id}>{n.node_label || n.node_name}</option>)}
                 </Select>
               </FormField>
               <FormField label="Audit Date" required>
