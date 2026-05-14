@@ -272,8 +272,13 @@ export default function Production() {
                   <td><Badge variant={STATUS_COLOR[e.status]}>{STATUS_ICON[e.status]} {e.status}</Badge></td>
                   <td>
                     <div className="action-btns">
-                      <button className="btn btn-sm btn-outline" onClick={async () => { const d = await productionAPI.getById(e.production_id); setSelected(d); setShortage(null); setModal('view'); }}>View</button>
-                      {e.status === 'draft' && <button className="btn btn-sm btn-danger-ghost" onClick={() => setConfirm(e.production_id)}>Delete</button>}
+                      <button className="btn btn-sm btn-outline" title="View details" onClick={async () => { const d = await productionAPI.getById(e.production_id); setSelected(d); setShortage(null); setModal('view'); }}>👁️</button>
+                      {e.status === 'draft' && (
+                        <button className="btn btn-sm btn-primary" title="Post production" onClick={async () => { const d = await productionAPI.getById(e.production_id); setSelected(d); setShortage(null); setModal('view'); setTimeout(() => document.getElementById('post-btn')?.click(), 300); }}>
+                          ✅ Post
+                        </button>
+                      )}
+                      {e.status === 'draft' && <button className="btn btn-sm btn-danger-ghost" onClick={() => setConfirm(e.production_id)}>🗑️</button>}
                     </div>
                   </td>
                 </tr>
@@ -603,7 +608,7 @@ export default function Production() {
                     style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid #fca5a5', background: '#fef2f2', color: '#b91c1c', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>
                     🗑️ Delete
                   </button>
-                  <button onClick={() => handlePost(selected)} disabled={posting}
+                  <button id="post-btn" onClick={() => handlePost(selected)} disabled={posting}
                     style={{ padding: '8px 24px', borderRadius: 8, background: posting ? '#86efac' : '#22c55e', color: '#fff', border: 'none', fontWeight: 700, fontSize: 13, cursor: posting ? 'not-allowed' : 'pointer' }}>
                     {posting ? '⏳ Checking & Posting…' : '✅ Post Production'}
                   </button>
