@@ -23,7 +23,7 @@ const EMPTY_WASTE = {
 const WASTE_REASONS = ['spoilage', 'overcooked', 'expired', 'dropped', 'quality_reject', 'other'];
 
 const EMPTY_RECIPE = {
-  recipe_name: '', food_menu_id: '', yield_qty: '1', yield_uom_id: ',
+  recipe_name: '', food_menu_id: '', yield_qty: '1', yield_uom_id: '',
   preparation_time: '', is_sub_recipe: false, notes: '',
 };
 
