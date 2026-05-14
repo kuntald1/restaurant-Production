@@ -49,19 +49,29 @@ export default function InvStockAudit() {
   const getItemName = (id) => items.find(i => i.item_id === id)?.item_name || '—';
   const getNodeName = (id) => nodes.find(n => n.node_id === id)?.node_name || '—';
 
-  // When node is selected, pre-load current stock balance as system_qty
+  // When node is selected, pre-load ALL items from master + current balance
   const handleNodeSelect = async (nodeId) => {
     setAuditNode(nodeId);
     if (!nodeId) { setAuditLines([]); return; }
     try {
-      const balance = await invStockAPI.getBalance(cid, parseInt(nodeId));
-      const lines = (balance || []).map(b => ({
-        item_id: b.item_id,
-        system_qty: parseFloat(b.qty_on_hand).toFixed(3),
-        physical_qty: parseFloat(b.qty_on_hand).toFixed(3),  // default = same as system
-        unit_cost: '0',
-        notes: '',
-      }));
+      const [balance, allItems] = await Promise.all([
+        invStockAPI.getBalance(cid, parseInt(nodeId)),
+        invItemAPI.getAll(cid),
+      ]);
+      const balMap = {};
+      (balance || []).forEach(b => { balMap[b.item_id] = parseFloat(b.qty_on_hand); });
+
+      // Show ALL items — with balance (even negative) or zero if no balance
+      const lines = (allItems || []).map(it => {
+        const sysQty = balMap[it.item_id] !== undefined ? balMap[it.item_id] : 0;
+        return {
+          item_id:      it.item_id,
+          system_qty:   sysQty.toFixed(3),
+          physical_qty: sysQty.toFixed(3),  // default = same as system
+          unit_cost:    String(it.standard_cost || '0'),
+          notes:        '',
+        };
+      });
       setAuditLines(lines);
     } catch {
       setAuditLines([]);

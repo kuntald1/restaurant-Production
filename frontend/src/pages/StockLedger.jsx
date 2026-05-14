@@ -17,12 +17,14 @@ const today      = () => new Date().toISOString().split('T')[0];
 const monthStart = () => { const d = new Date(); d.setDate(1); return d.toISOString().split('T')[0]; };
 
 const TXN_META = {
-  grn_in:          { label: 'GRN In',       color: '#16a34a', bg: '#dcfce7', icon: '📥', dir: 'in'  },
-  production_in:   { label: 'Production',   color: '#2563eb', bg: '#dbeafe', icon: '🏭', dir: 'in'  },
-  transfer_in:     { label: 'Transfer In',  color: '#0891b2', bg: '#cffafe', icon: '📦', dir: 'in'  },
-  transfer_out:    { label: 'Transfer Out', color: '#d97706', bg: '#fef3c7', icon: '🚚', dir: 'out' },
-  consumption_out: { label: 'Consumption',  color: '#7c3aed', bg: '#ede9fe', icon: '🍳', dir: 'out' },
-  waste_out:       { label: 'Waste',        color: '#dc2626', bg: '#fee2e2', icon: '🗑️', dir: 'out' },
+  grn_in:          { label: 'GRN In',           color: '#16a34a', bg: '#dcfce7', icon: '📥', dir: 'in'  },
+  production_in:   { label: 'Production',       color: '#2563eb', bg: '#dbeafe', icon: '🏭', dir: 'in'  },
+  transfer_in:     { label: 'Transfer In',      color: '#0891b2', bg: '#cffafe', icon: '📦', dir: 'in'  },
+  transfer_out:    { label: 'Transfer Out',     color: '#d97706', bg: '#fef3c7', icon: '🚚', dir: 'out' },
+  consumption_out: { label: 'Consumption',      color: '#7c3aed', bg: '#ede9fe', icon: '🍳', dir: 'out' },
+  waste_out:       { label: 'Waste',            color: '#dc2626', bg: '#fee2e2', icon: '🗑️', dir: 'out' },
+  audit_in:        { label: 'Audit Adj (+)',    color: '#059669', bg: '#d1fae5', icon: '📋', dir: 'in'  },
+  audit_out:       { label: 'Audit Adj (-)',    color: '#b45309', bg: '#fef3c7', icon: '📋', dir: 'out' },
 };
 
 const LEDGER_CARD = { background: '#fff', border: '1px solid #f0f0f0', borderRadius: 12, padding: '16px 18px' };
