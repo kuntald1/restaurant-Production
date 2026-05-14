@@ -180,10 +180,12 @@ const FA_TO_EMOJI = {
 
 const getIcon = (faClass) => {
   if (!faClass) return '•';
+  // If it's already an emoji (non-ASCII, not starting with 'fa-'), return as-is
+  if (!faClass.startsWith('fa') && !/^[a-z]/.test(faClass)) return faClass;
   if (FA_TO_EMOJI[faClass]) return FA_TO_EMOJI[faClass];
   // Fallback: try partial match
   const key = Object.keys(FA_TO_EMOJI).find(k => faClass.includes(k.replace('fa-', '')));
-  return key ? FA_TO_EMOJI[key] : '🔹';
+  return key ? FA_TO_EMOJI[key] : faClass.length <= 4 ? faClass : '🔹';
 };
 
 function buildMenuTree(menus) {
