@@ -240,15 +240,6 @@ export default function StockLedger() {
   const rootCid       = isChildBranch ? myParentId : cid;
   const isAdmin       = !!user?.is_admin || !!user?.is_super_admin;
 
-  // Same visibility logic as other pages
-  const visibleNodes = (() => {
-    if (!nodes.length) return nodes;
-    if (isAdmin) return nodes;
-    if (isChildBranch) return nodes.filter(n => String(n.node_id).replace('b_','') === String(cid));
-    // Parent company non-admin (Sujay): inv_nodes + depth=1 branch only
-    return nodes.filter(n => !String(n.node_id).startsWith('b_') || n.depth === 1 || Number(String(n.node_id).replace('b_','')) === Number(cid));
-  })();
-
   const [ledger,     setLedger]     = useState([]);
   const [items,      setItems]      = useState([]);
   const [categories, setCategories] = useState([]);
@@ -259,9 +250,17 @@ export default function StockLedger() {
   const [filterCat,  setFilterCat]  = useState('');
   const [fromDate,   setFromDate]   = useState(monthStart());
   const [toDate,     setToDate]     = useState(today());
-  const [viewMode,   setViewMode]   = useState('flow'); // flow | table
+  const [viewMode,   setViewMode]   = useState('flow');
 
   const { nodes } = useInventoryNodes(cid, selectedCompany, allCompanies);
+
+  // visibleNodes MUST be after nodes declaration
+  const visibleNodes = (() => {
+    if (!nodes.length) return nodes;
+    if (isAdmin) return nodes;
+    if (isChildBranch) return nodes.filter(n => String(n.node_id).replace('b_','') === String(cid));
+    return nodes.filter(n => !String(n.node_id).startsWith('b_') || n.depth === 1 || Number(String(n.node_id).replace('b_','')) === Number(cid));
+  })();
 
   // Define load before useEffects to avoid TDZ in minified bundle
   async function load() {
