@@ -1206,7 +1206,7 @@ def get_stock_ledger(db: Session, company_id: int, node_id: int = None,
     )
     SELECT l.txn_date, l.txn_type, l.txn_code, l.txn_id, l.ref_number,
            l.node_id,
-           COALESCE(n.node_name, 'Node #' || l.node_id::text) AS node_name,
+           COALESCE(n.node_name, co.name, 'Node #' || l.node_id::text) AS node_name,
            l.item_id,
            COALESCE(ii.item_name, 'Item #' || l.item_id::text) AS item_name,
            COALESCE(ic.category_name, '') AS category_name,
@@ -1215,6 +1215,7 @@ def get_stock_ledger(db: Session, company_id: int, node_id: int = None,
            COALESCE(l.unit_cost,0)::float AS unit_cost
     FROM ledger l
     LEFT JOIN inv_node n           ON n.node_id = l.node_id
+    LEFT JOIN company co           ON co.company_unique_id = l.node_id AND n.node_id IS NULL
     LEFT JOIN inv_item ii          ON ii.item_id = l.item_id
     LEFT JOIN inv_item_category ic ON ic.item_category_id = ii.item_category_id
     WHERE l.item_id IS NOT NULL
