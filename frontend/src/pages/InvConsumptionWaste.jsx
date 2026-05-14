@@ -47,15 +47,16 @@ export default function InvConsumptionWaste() {
   const [uoms, setUoms]       = useState([]);
   const { nodes } = useInventoryNodes(cid, selectedCompany, allCompanies);
   // Filter nodes by role
+  const isAdmin = !!user?.is_admin || !!user?.is_super_admin;
   const visibleNodes = (() => {
-    if (isSuperAdmin) return nodes; // admin sees all
+    if (isAdmin) return nodes; // admin sees ALL nodes
     if (isChildBranch) {
-      // Child: only their own branch node
+      // Child branch (Alok): only their own node
       return nodes.filter(n => String(n.node_id).replace('b_','') === String(cid));
     }
-    // Parent company: show their own inv_nodes (WH, CK) + direct child branches
-    // Exclude grandchild branches to avoid confusion
-    return nodes;
+    // Parent company non-admin (Sujay): only inv_node rows owned by company_unique_id=1
+    // These are WH, CK, Main Branch — NOT child company branches (b_ prefixed)
+    return nodes.filter(n => !String(n.node_id).startsWith('b_'));
   })();
   const [loading, setLoading] = useState(false);
   const [modal, setModal]     = useState(null);
