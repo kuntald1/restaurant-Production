@@ -144,13 +144,31 @@ export default function Production() {
   };
 
   // ── Post entry ───────────────────────────────────────────────
+  const [shortage, setShortage] = useState(null); // shortage info for blocking UI
+
   const handlePost = async (entry) => {
     setPosting(true);
+    setShortage(null);
     try {
+      // Step 1: pre-check stock sufficiency
+      const check = await productionAPI.checkStock(entry.production_id);
+      if (!check.sufficient) {
+        setShortage({ ...check, maxProducible: check.max_producible });
+        setPosting(false);
+        return; // BLOCK — show shortage UI instead
+      }
+      // Step 2: post if sufficient
       const res = await productionAPI.post(entry.production_id, user?.username || 'admin');
-      showToast('Production posted! Stock updated.');
-      setSelected(res); load();
-    } catch (e) { showToast(e.message || 'Error', 'error'); }
+      showToast('Production posted! Stock updated. ✅');
+      setSelected(res); setShortage(null); load();
+    } catch (e) {
+      const msg = e.message || '';
+      if (msg.includes('INSUFFICIENT_STOCK')) {
+        showToast('Insufficient stock — cannot post production', 'error');
+      } else {
+        showToast(msg || 'Error posting', 'error');
+      }
+    }
     setPosting(false);
   };
 
@@ -415,10 +433,48 @@ export default function Production() {
               </div>
             )}
 
-            {/* Warning if any stock is insufficient */}
-            {selected.status === 'draft' && selected.items?.some(it => parseFloat(it.stock_on_hand) < parseFloat(it.actual_qty || it.required_qty)) && (
+            {/* Shortage blocking panel */}
+            {shortage && (
+              <div style={{ background: '#fef2f2', border: '2px solid #ef4444', borderRadius: 10, padding: '16px', marginBottom: 16 }}>
+                <div style={{ fontWeight: 700, fontSize: 14, color: '#b91c1c', marginBottom: 10 }}>
+                  🚫 Cannot Post — Insufficient Stock at {selected.node_name}
+                </div>
+                <div className="table-wrapper" style={{ marginBottom: 12 }}>
+                  <table className="data-table" style={{ marginBottom: 0 }}>
+                    <thead>
+                      <tr>
+                        <th>Ingredient</th>
+                        <th style={{ color: '#ef4444' }}>Needed</th>
+                        <th style={{ color: '#22c55e' }}>Available</th>
+                        <th style={{ color: '#ef4444' }}>Short by</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {shortage.shortages.map((s, i) => (
+                        <tr key={i} style={{ background: '#fef2f2' }}>
+                          <td style={{ fontWeight: 600 }}>{s.item_name}</td>
+                          <td style={{ color: '#ef4444', fontWeight: 600 }}>{s.needed.toFixed(3)}</td>
+                          <td style={{ color: '#22c55e', fontWeight: 600 }}>{s.available.toFixed(3)}</td>
+                          <td style={{ color: '#b91c1c', fontWeight: 700 }}>-{s.short_by.toFixed(3)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div style={{ background: '#fff', border: '1px solid #fca5a5', borderRadius: 8, padding: '10px 14px', fontSize: 13 }}>
+                  <div style={{ fontWeight: 600, color: '#b91c1c', marginBottom: 6 }}>How to fix:</div>
+                  <div style={{ color: '#7f1d1d', lineHeight: 1.8 }}>
+                    <div>📦 Option 1: Transfer more stock from <strong>Main Warehouse → {selected.node_name}</strong></div>
+                    <div>📉 Option 2: Reduce planned quantity to <strong>{shortage.maxProducible?.toFixed(2)} packets</strong> (max with current stock)</div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Warning if any stock is insufficient (soft warning, not blocking) */}
+            {!shortage && selected.status === 'draft' && selected.items?.some(it => parseFloat(it.stock_on_hand) < parseFloat(it.actual_qty || it.required_qty)) && (
               <div style={{ background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 8, padding: '10px 14px', marginBottom: 16, fontSize: 13, color: '#b91c1c' }}>
-                ⚠️ Some raw materials have insufficient stock at this node. Posting will proceed but stock may go negative.
+                ⚠️ Some ingredients have low stock — click Post to check exact quantities.
               </div>
             )}
 

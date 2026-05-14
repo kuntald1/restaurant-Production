@@ -197,13 +197,79 @@ def update(db: Session, production_id: int, data: dict) -> dict:
     return get_by_id(db, production_id)
 
 
+# ── Stock sufficiency check ──────────────────────────────────
+def check_stock_sufficiency(db: Session, production_id: int) -> dict:
+    """
+    Check if CK node has enough stock for all raw materials.
+    Returns: { sufficient: bool, shortages: [...] }
+    """
+    entry = db.query(ProductionEntry).filter_by(production_id=production_id).first()
+    if not entry:
+        raise ValueError("Production entry not found")
+
+    items = db.query(ProductionEntryItem).filter_by(
+        production_id=production_id, is_active=True
+    ).all()
+
+    shortages = []
+    for it in items:
+        if not it.item_id:
+            continue
+        needed = Decimal(str(it.actual_qty or it.required_qty))
+        # Get current stock at CK node
+        balance = db.query(StockBalance).filter_by(
+            item_id=it.item_id, node_id=entry.node_id
+        ).first()
+        on_hand = Decimal(str(balance.qty_on_hand)) if balance else Decimal("0")
+
+        if on_hand < needed:
+            item = db.query(InventoryItem).filter_by(item_id=it.item_id).first()
+            shortages.append({
+                "item_id":    it.item_id,
+                "item_name":  item.item_name if item else f"Item #{it.item_id}",
+                "needed":     float(needed),
+                "available":  float(on_hand),
+                "short_by":   float(needed - on_hand),
+            })
+
+    return {
+        "sufficient": len(shortages) == 0,
+        "shortages":  shortages,
+        # Max producible qty based on most constrained ingredient
+        "max_producible": _calc_max_producible(db, entry, items),
+    }
+
+
+def _calc_max_producible(db: Session, entry: ProductionEntry, items: list) -> float:
+    """Calculate maximum producible qty based on available stock."""
+    if not items or not entry.planned_qty:
+        return 0.0
+    planned = Decimal(str(entry.planned_qty))
+    min_ratio = Decimal("1.0")
+    for it in items:
+        if not it.item_id:
+            continue
+        needed = Decimal(str(it.actual_qty or it.required_qty))
+        if needed == 0:
+            continue
+        balance = db.query(StockBalance).filter_by(
+            item_id=it.item_id, node_id=entry.node_id
+        ).first()
+        on_hand = Decimal(str(balance.qty_on_hand)) if balance else Decimal("0")
+        ratio = on_hand / needed
+        if ratio < min_ratio:
+            min_ratio = ratio
+    return float((planned * min_ratio).quantize(Decimal("0.001")))
+
+
 # ── Post production entry ─────────────────────────────────────
 def post(db: Session, production_id: int, posted_by: str = None) -> dict:
     """
     Post the entry:
-    1. Deduct each raw material from CK node stock
-    2. Add finished goods to CK node stock
-    3. Mark as posted
+    1. Check stock sufficiency — BLOCK if any shortage
+    2. Deduct each raw material from CK node stock
+    3. Add finished goods to CK node stock
+    4. Mark as posted
     """
     entry = db.query(ProductionEntry).filter_by(
         production_id=production_id, is_active=True
@@ -212,6 +278,19 @@ def post(db: Session, production_id: int, posted_by: str = None) -> dict:
         raise ValueError("Production entry not found")
     if entry.status == "posted":
         raise ValueError("Already posted")
+
+    # ── STRICT CHECK: block if any ingredient is insufficient ──
+    check = check_stock_sufficiency(db, production_id)
+    if not check["sufficient"]:
+        shortage_lines = "\n".join([
+            f"• {s['item_name']}: Need {s['needed']:.3f}, Available {s['available']:.3f}, Short by {s['short_by']:.3f}"
+            for s in check["shortages"]
+        ])
+        raise ValueError(
+            f"INSUFFICIENT_STOCK:{len(check['shortages'])} ingredient(s) have insufficient stock at this node:\n{shortage_lines}"
+            f"\n\nMax producible with current stock: {check['max_producible']:.2f} units."
+            f"\nPlease transfer more stock from Main Warehouse or reduce planned quantity."
+        )
 
     node_id    = entry.node_id
     company_id = entry.company_unique_id
@@ -233,10 +312,10 @@ def post(db: Session, production_id: int, posted_by: str = None) -> dict:
         _adjust_balance(db, company_id, node_id, entry.finished_item_id, produced_qty)
 
     # 3. Update entry status
-    entry.status      = "posted"
+    entry.status       = "posted"
     entry.produced_qty = produced_qty
-    entry.posted_at   = datetime.utcnow()
-    entry.posted_by   = posted_by
+    entry.posted_at    = datetime.utcnow()
+    entry.posted_by    = posted_by
 
     db.commit()
     return get_by_id(db, production_id)
