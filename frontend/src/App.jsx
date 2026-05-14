@@ -40,6 +40,7 @@ import InvSuppliers        from './pages/InvSuppliers';
 import InvPurchase         from './pages/InvPurchase';
 import AdvancedPO          from './pages/AdvancedPO';
 import Production          from './pages/Production';
+import StockLedger         from './pages/StockLedger';
 import InvTransfer         from './pages/InvStockTransfer';
 import InvConsumptionWaste from './pages/InvConsumptionWaste';
 import InvStockAudit       from './pages/InvStockAudit';
@@ -93,6 +94,7 @@ const URL_TO_PAGE = {
   '/inventory/purchase':          InvPurchase,
   '/inventory/advanced-po':       AdvancedPO,
   '/inventory/production':        Production,
+  '/inventory/stock-ledger':      StockLedger,
   '/inventory/transfer':          InvTransfer,
   '/inventory/consumption':       InvConsumptionWaste,
   '/inventory/audit':             InvStockAudit,
