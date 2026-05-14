@@ -43,9 +43,11 @@ export default function InvStockAudit() {
     if (!cid) return;
     setLoading(true);
     try {
+      const myPar  = selectedCompany?.parant_company_unique_id;
+      const apiCid = (myPar && Number(myPar) !== 0) ? myPar : cid;
       const [a, i] = await Promise.allSettled([
         invAuditAPI.getAll(cid),
-        invItemAPI.getAll(cid),
+        invItemAPI.getAll(apiCid),
       ]);
       setAudits(a.status === 'fulfilled' ? (a.value || []) : []);
       setItems(i.status === 'fulfilled' ? (i.value || []) : []);
@@ -80,12 +82,15 @@ export default function InvStockAudit() {
       });
 
       // Show ALL items — with balance (even negative) or zero if no balance
+      // Also update items state so dropdown has options
+      if (allItems && allItems.length > 0) setItems(allItems);
+
       const lines = (allItems || []).map(it => {
         const sysQty = balMap[it.item_id] !== undefined ? balMap[it.item_id] : 0;
         return {
           item_id:      it.item_id,
           system_qty:   sysQty.toFixed(3),
-          physical_qty: sysQty.toFixed(3),  // default = same as system
+          physical_qty: sysQty.toFixed(3),
           unit_cost:    String(it.standard_cost || '0'),
           notes:        '',
         };
