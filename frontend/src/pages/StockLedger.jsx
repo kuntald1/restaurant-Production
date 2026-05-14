@@ -25,7 +25,7 @@ const TXN_META = {
   waste_out:       { label: 'Waste',        color: '#dc2626', bg: '#fee2e2', icon: '🗑️', dir: 'out' },
 };
 
-const CARD = { background: '#fff', border: '1px solid #f0f0f0', borderRadius: 12, padding: '16px 18px' };
+const LEDGER_CARD = { background: '#fff', border: '1px solid #f0f0f0', borderRadius: 12, padding: '16px 18px' };
 
 // ─────────────────────────────────────────────────────────────
 // SANKEY FLOW COMPONENT
@@ -51,9 +51,11 @@ function SankeyFlow({ itemName, rows, nodeName }) {
   const sources = Object.entries(totals).filter(([, v]) => v.meta?.dir === 'in');
   const dests   = Object.entries(totals).filter(([, v]) => v.meta?.dir === 'out');
 
-  const W = 700, H = Math.max(220, (Math.max(sources.length, dests.length + 1)) * 80 + 60);
+  const W = 700;
+  const H = Math.max(220, (Math.max(sources.length, dests.length + 1)) * 80 + 60);
   const MID_X = W / 2;
-  const BOX_W = 140, BOX_H = 44;
+  const BOX_W = 140;
+  const BOX_H = 44;
 
   // Layout source nodes
   const srcNodes = sources.map(([code, v], i) => ({
@@ -324,7 +326,7 @@ export default function StockLedger() {
       <PageHeader title="📒 Stock Ledger" subtitle="Complete movement history — GRN · Production · Transfer · Consumption · Waste" />
 
       {/* ── Filters ── */}
-      <div style={{ ...CARD, marginBottom: 18, display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+      <div style={{ ...LEDGER_CARD, marginBottom: 18, display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
         {[
           { lbl: 'BRANCH / NODE', el: <select value={filterNode} onChange={e => setFilterNode(e.target.value)}
               style={{ padding: '7px 12px', fontSize: 13, borderRadius: 8, border: '1px solid #e5e7eb' }}>
@@ -374,7 +376,7 @@ export default function StockLedger() {
           { e:'🗑️', l:'Waste',        v: waste.toFixed(2),          c:'#f59e0b', bg:'#fffbeb' },
           { e:'📊', l:'Transactions', v: filtered.length,           c:'#3b82f6', bg:'#eff6ff' },
         ].map(c => (
-          <div key={c.l} style={{ ...CARD, borderTop:`3px solid ${c.c}`, display:'flex', alignItems:'center', gap:12 }}>
+          <div key={c.l} style={{ ...LEDGER_CARD, borderTop:`3px solid ${c.c}`, display:'flex', alignItems:'center', gap:12 }}>
             <div style={{ width:38, height:38, borderRadius:10, background:c.bg, display:'flex', alignItems:'center', justifyContent:'center', fontSize:18 }}>{c.e}</div>
             <div>
               <div style={{ fontSize:22, fontWeight:700, color:c.c, lineHeight:1 }}>{c.v}</div>
@@ -400,7 +402,7 @@ export default function StockLedger() {
             const tout = grp.rows.reduce((s,r) => s + r.qty_out, 0);
             const rem  = Math.max(0, tin - tout).toFixed(2);
             return (
-              <div key={idx} style={{ ...CARD, marginBottom: 20 }}>
+              <div key={idx} style={{ ...LEDGER_CARD, marginBottom: 20 }}>
                 {/* Card header */}
                 <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16 }}>
                   <div>
