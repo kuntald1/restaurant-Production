@@ -51,20 +51,16 @@ export default function InvConsumptionWaste() {
   const visibleNodes = (() => {
     if (isAdmin) return nodes; // admin sees ALL nodes
     if (isChildBranch) {
-      // Child branch (Alok): only their own node
+      // Child branch (Alok/Gariahat): only their own node
       return nodes.filter(n => String(n.node_id).replace('b_','') === String(cid));
     }
-    // Parent company non-admin (Sujay):
-    // Show inv_node rows (WH, CK) + direct child company branches
-    // but exclude grandchild branches
-    const directChildCids = (allCompanies || [])
-      .filter(c => Number(c.parant_company_unique_id) === Number(cid))
-      .map(c => Number(c.company_unique_id));
+    // Parent company non-admin (Sujay, cid=1):
+    // Show: inv_node rows (WH, CK) + depth=1 branch (Main Branch = the root company itself)
+    // Exclude: depth=2 branches (Dharmatala, Gariahat — separate branch companies)
     return nodes.filter(n => {
-      const nid = String(n.node_id);
-      if (!nid.startsWith('b_')) return true; // inv_node rows (WH, CK)
-      const numId = Number(nid.replace('b_', ''));
-      return directChildCids.includes(numId); // only direct children
+      if (!String(n.node_id).startsWith('b_')) return true; // WH, CK
+      // For b_ nodes: only include depth=1 (root company's own branch node)
+      return n.depth === 1 || Number(n.node_id.replace('b_','')) === Number(cid);
     });
   })();
   const [loading, setLoading] = useState(false);
