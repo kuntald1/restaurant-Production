@@ -1131,11 +1131,13 @@ def get_stock_ledger(db: Session, company_id: int, node_id: int = None,
     nc4 = f"AND t.from_node_id = {int(node_id)}"      if node_id else ""
     nc5 = f"AND c.node_id = {int(node_id)}"           if node_id else ""
     nc6 = f"AND w.node_id = {int(node_id)}"           if node_id else ""
+    nc7 = f"AND a.node_id = {int(node_id)}"           if node_id else ""
     ic  = f"AND gi.item_id = {int(item_id)}"          if item_id else ""
     ic2 = f"AND pe.finished_item_id = {int(item_id)}" if item_id else ""
     ic3 = f"AND ti.item_id = {int(item_id)}"          if item_id else ""
     ic4 = f"AND ci.item_id = {int(item_id)}"          if item_id else ""
     ic5 = f"AND w.item_id = {int(item_id)}"           if item_id else ""
+    ic6 = f"AND ai.item_id = {int(item_id)}"          if item_id else ""
 
     sql = f"""
     WITH ledger AS (
@@ -1202,6 +1204,24 @@ def get_stock_ledger(db: Session, company_id: int, node_id: int = None,
       FROM inv_waste w
       WHERE w.company_unique_id = {company_id}
         AND w.waste_date BETWEEN '{fd}' AND '{td}' {nc6} {ic5}
+
+      UNION ALL
+
+      -- 7. Stock Audit Adjustment (variance = physical - system)
+      SELECT a.audit_date AS txn_date,
+             CASE WHEN ai.variance_qty >= 0 THEN 'Audit Adjustment (+)' ELSE 'Audit Adjustment (-)' END AS txn_type,
+             CASE WHEN ai.variance_qty >= 0 THEN 'audit_in' ELSE 'audit_out' END AS txn_code,
+             a.audit_id AS txn_id,
+             CONCAT('AUD-', a.audit_id) AS ref_number,
+             a.node_id, ai.item_id,
+             CASE WHEN ai.variance_qty >= 0 THEN ai.variance_qty ELSE 0 END AS qty_in,
+             CASE WHEN ai.variance_qty < 0  THEN ABS(ai.variance_qty) ELSE 0 END AS qty_out,
+             ai.unit_cost
+      FROM inv_stock_audit a
+      JOIN inv_stock_audit_item ai ON ai.audit_id = a.audit_id
+      WHERE a.company_unique_id = {company_id}
+        AND a.status = 'posted'
+        AND a.audit_date BETWEEN '{fd}' AND '{td}' {nc7} {ic6}
 
     )
     SELECT l.txn_date, l.txn_type, l.txn_code, l.txn_id, l.ref_number,
