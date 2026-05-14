@@ -45,6 +45,7 @@ export default function InvConsumptionWaste() {
   const [recipes, setRecipes] = useState([]);
   const [items, setItems]     = useState([]);
   const [uoms, setUoms]       = useState([]);
+  const [foodMenus, setFoodMenus] = useState([]);
   const { nodes } = useInventoryNodes(cid, selectedCompany, allCompanies);
   // Filter nodes by role
   const isAdmin = !!user?.is_admin || !!user?.is_super_admin;
