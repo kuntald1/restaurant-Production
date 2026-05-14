@@ -7,7 +7,7 @@
 import { useEffect, useState } from 'react';
 import {
   invConsumptionAPI, invWasteAPI, invRecipeAPI,
-  invItemAPI, invUomAPI
+  invItemAPI, invUomAPI, invStockAPI
 } from '../services/api';
 import { useInventoryNodes } from './useInventoryNodes';
 import { Table, Modal, Badge, Spinner, PageHeader, FormField, Input, Select, Textarea, ConfirmDialog } from '../components/UI';
@@ -31,10 +31,13 @@ export default function InvConsumptionWaste() {
   const { selectedCompany, showToast, user, allCompanies } = useApp();
   const cid = selectedCompany?.company_unique_id;
 
-  // Role-based node visibility (same logic as InvReports)
+  // Role-based visibility (same logic as InvReports)
   const isSuperAdmin  = !!user?.is_super_admin;
   const myParentId    = selectedCompany?.parant_company_unique_id;
   const isChildBranch = !isSuperAdmin && !!myParentId && Number(myParentId) !== 0;
+  const isParentCompany = !isSuperAdmin && (!myParentId || Number(myParentId) === 0);
+  // rootCid: items/recipes/uoms stored under root parent company
+  const rootCid = isChildBranch ? myParentId : cid;
 
   const [tab, setTab]         = useState('consumption');
   const [consumptions, setConsumptions] = useState([]);
@@ -44,9 +47,16 @@ export default function InvConsumptionWaste() {
   const [uoms, setUoms]       = useState([]);
   const { nodes } = useInventoryNodes(cid, selectedCompany, allCompanies);
   // Filter nodes by role
-  const visibleNodes = isChildBranch
-    ? nodes.filter(n => String(n.node_id).replace('b_','') === String(cid))
-    : nodes;
+  const visibleNodes = (() => {
+    if (isSuperAdmin) return nodes; // admin sees all
+    if (isChildBranch) {
+      // Child: only their own branch node
+      return nodes.filter(n => String(n.node_id).replace('b_','') === String(cid));
+    }
+    // Parent company: show their own inv_nodes (WH, CK) + direct child branches
+    // Exclude grandchild branches to avoid confusion
+    return nodes;
+  })();
   const [loading, setLoading] = useState(false);
   const [modal, setModal]     = useState(null);
   const [form, setForm]       = useState(EMPTY_WASTE);
@@ -60,14 +70,23 @@ export default function InvConsumptionWaste() {
     if (!cid) return;
     setLoading(true);
     try {
-      const [c, w, r, i, u] = await Promise.allSettled([
+      const apiCid = rootCid || cid;  // items/recipes under root company
+      const [c, w, r, i, u, sb] = await Promise.allSettled([
         invConsumptionAPI.getAll(cid), invWasteAPI.getAll(cid), invRecipeAPI.getAll(cid),
-        invItemAPI.getAll(cid), invUomAPI.getAll(cid),
+        invItemAPI.getAll(apiCid), invUomAPI.getAll(apiCid),
+        // For child branch: load stock balance to filter items with stock only
+        isChildBranch ? invStockAPI.getBalance(apiCid, Number(cid)) : Promise.resolve(null),
       ]);
+      const allItems   = i.status === 'fulfilled' ? (i.value || []) : [];
+      const stockData  = sb.status === 'fulfilled' ? (sb.value || []) : [];
+      // Child branch: only show items that exist in their stock
+      const itemsToShow = isChildBranch && stockData.length > 0
+        ? allItems.filter(it => stockData.some(s => s.item_id === it.item_id && parseFloat(s.qty_on_hand) > 0))
+        : allItems;
       setConsumptions(c.status === 'fulfilled' ? (c.value || []) : []);
       setWastes(w.status === 'fulfilled' ? (w.value || []) : []);
       setRecipes(r.status === 'fulfilled' ? (r.value || []) : []);
-      setItems(i.status === 'fulfilled' ? (i.value || []) : []);
+      setItems(itemsToShow);
       setUoms(u.status === 'fulfilled' ? (u.value || []) : []);
     } catch {}
     setLoading(false);
