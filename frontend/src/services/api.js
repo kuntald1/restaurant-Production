@@ -357,11 +357,12 @@ export const advPoAPI = {
 
 // ── Production Entry ──────────────────────────────────────────
 export const productionAPI = {
-  getAll:       (cid)       => request('GET',    `/production/list/${cid}`),
-  checkStock:   (id)        => request('GET',    `/production/${id}/check-stock`),
-  getById:  (id)           => request('GET',    `/production/${id}`),
-  create:   (data)         => request('POST',   '/production', data),
-  update:   (id, data)     => request('PUT',    `/production/${id}`, data),
-  post:     (id, by)       => request('POST',   `/production/${id}/post${by ? `?posted_by=${by}` : ''}`),
-  delete:   (id)           => request('DELETE', `/production/${id}`),
+  getAll:              (cid)          => request('GET',    `/production/list/${cid}`),
+  getById:             (id)           => request('GET',    `/production/${id}`),
+  create:              (data)         => request('POST',   '/production', data),
+  update:              (id, data)     => request('PUT',    `/production/${id}`, data),
+  post:                (id, by)       => request('POST',   `/production/${id}/post${by ? `?posted_by=${by}` : ''}`),
+  delete:              (id)           => request('DELETE', `/production/${id}`),
+  checkStock:          (id)           => request('GET',    `/production/${id}/check-stock`),
+  getNodeStock:        (cid, nodeId)  => request('GET',    `/inventory/stock-balance/${cid}?node_id=${nodeId}`),
 };
