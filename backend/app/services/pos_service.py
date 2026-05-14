@@ -498,6 +498,153 @@ def update_kot_item_status(db: Session, kot_item_id: int, data: KOTItemStatusUpd
 
 # ── Bill ─────────────────────────────────────────────────────
 
+
+
+# ══════════════════════════════════════════════════════════════
+# POS AUTO-DEDUCTION — deduct inventory when bill is generated
+# ══════════════════════════════════════════════════════════════
+def _deduct_inventory_for_bill(db, order, company_id: int):
+    """
+    For each order item:
+    1. Find recipe linked to food_menu_id
+    2. Scale ingredients by qty ordered
+    3. Deduct from branch/node stock
+    4. Create consumption record for audit trail
+
+    Runs inside try/except — billing NEVER fails due to inventory errors.
+    If inventory module not installed (no inv_recipe table), silently skips.
+    """
+    import logging
+    from sqlalchemy import text
+    from app.services.inventory_service import _adjust_balance
+    from datetime import date as _date
+
+    logger = logging.getLogger(__name__)
+
+    try:
+        # Check if inventory module is enabled (inv_recipe table exists)
+        check = db.execute(text(
+            "SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='inv_recipe')"
+        )).scalar()
+        if not check:
+            return  # Inventory module not installed — skip silently
+
+        # Get node_id for this order (branch = company_unique_id used as node_id)
+        node_id = company_id  # branches use their company_unique_id as node_id
+
+        # Check if there are any recipes linked to food menu items
+        active_items = [i for i in order.items if not i.is_cancelled]
+        if not active_items:
+            return
+
+        # Get all food_menu_ids in this order
+        menu_ids = [i.food_menu_id for i in active_items if i.food_menu_id]
+        if not menu_ids:
+            return
+
+        # Find recipes linked to these menu items
+        recipes = db.execute(text(f"""
+            SELECT r.recipe_id, r.recipe_name, r.food_menu_id, r.yield_qty
+            FROM inv_recipe r
+            WHERE r.food_menu_id IN ({','.join(str(m) for m in menu_ids)})
+              AND r.company_unique_id = :cid
+              AND r.is_active = TRUE
+        """), {"cid": company_id}).fetchall()
+
+        if not recipes:
+            return  # No linked recipes — skip
+
+        recipe_map = {r.food_menu_id: r for r in recipes}
+
+        # Get ingredients for all matched recipes
+        recipe_ids = [r.recipe_id for r in recipes]
+        ingredients = db.execute(text(f"""
+            SELECT ri.recipe_id, ri.item_id, ri.qty, ri.uom_id,
+                   ii.item_name, ii.standard_cost
+            FROM inv_recipe_ingredient ri
+            JOIN inv_item ii ON ii.item_id = ri.item_id
+            WHERE ri.recipe_id IN ({','.join(str(r) for r in recipe_ids)})
+              AND ri.is_active = TRUE
+        """)).fetchall()
+
+        # Group ingredients by recipe_id
+        ing_map = {}
+        for ing in ingredients:
+            if ing.recipe_id not in ing_map:
+                ing_map[ing.recipe_id] = []
+            ing_map[ing.recipe_id].append(ing)
+
+        # Process each order item
+        cons_items = []
+        for order_item in active_items:
+            if not order_item.food_menu_id:
+                continue
+            recipe = recipe_map.get(order_item.food_menu_id)
+            if not recipe:
+                continue
+
+            qty_ordered = float(order_item.quantity or 1)
+            yield_qty   = float(recipe.yield_qty or 1)
+            scale       = qty_ordered / yield_qty
+
+            ings = ing_map.get(recipe.recipe_id, [])
+            for ing in ings:
+                deduct_qty = round(float(ing.qty) * scale, 4)
+                if deduct_qty <= 0:
+                    continue
+
+                # Deduct from stock — allows negative (Approach 1)
+                try:
+                    _adjust_balance(db, company_id, node_id, ing.item_id, -deduct_qty)
+                except Exception as e:
+                    logger.warning(f"Stock adjust failed for item {ing.item_id}: {e}")
+
+                cons_items.append({
+                    "item_id":    ing.item_id,
+                    "qty":        deduct_qty,
+                    "unit_cost":  float(ing.standard_cost or 0),
+                    "recipe_id":  recipe.recipe_id,
+                })
+
+        # Create consumption record for audit trail
+        if cons_items:
+            cons_result = db.execute(text("""
+                INSERT INTO inv_stock_consumption
+                    (company_unique_id, node_id, consumption_date, consumption_type,
+                     status, notes, created_at)
+                VALUES (:cid, :nid, :dt, 'pos_auto', 'posted', :notes, NOW())
+                RETURNING consumption_id
+            """), {
+                "cid":   company_id,
+                "nid":   node_id,
+                "dt":    _date.today(),
+                "notes": f"Auto-deducted for Order #{order.order_number}",
+            }).fetchone()
+
+            if cons_result:
+                cons_id = cons_result.consumption_id
+                for ci in cons_items:
+                    db.execute(text("""
+                        INSERT INTO inv_stock_consumption_item
+                            (consumption_id, item_id, qty_consumed, unit_cost, company_unique_id)
+                        VALUES (:cid, :iid, :qty, :cost, :company_id)
+                    """), {
+                        "cid":        cons_id,
+                        "iid":        ci["item_id"],
+                        "qty":        ci["qty"],
+                        "cost":       ci["unit_cost"],
+                        "company_id": company_id,
+                    })
+            db.commit()
+            logger.info(f"Inventory deducted for order #{order.order_number}: {len(cons_items)} ingredient lines")
+
+    except Exception as e:
+        logger.warning(f"POS inventory deduction skipped for order {order.order_id}: {e}")
+        try:
+            db.rollback()
+        except Exception:
+            pass
+
 def generate_bill(db: Session, data: BillCreate):
     order = get_order(db, data.order_id)
 
@@ -666,6 +813,15 @@ def generate_bill(db: Session, data: BillCreate):
 
     db.commit()
     db.refresh(bill)
+
+    # ── POS Auto-deduction — deduct inventory for billed items ──
+    # Runs silently — billing never fails due to inventory errors
+    try:
+        _deduct_inventory_for_bill(db, order, data.company_unique_id)
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f"Inventory deduction error: {e}")
+
     return bill
 
 
