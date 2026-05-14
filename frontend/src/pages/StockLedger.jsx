@@ -263,16 +263,8 @@ export default function StockLedger() {
 
   const { nodes } = useInventoryNodes(cid, selectedCompany, allCompanies);
 
-  useEffect(() => {
-    if (!cid) return;
-    const api = rootCid || cid;
-    Promise.allSettled([invItemAPI.getAll(api), invCategoryAPI.getAll(api)]).then(([it, ca]) => {
-      setItems(it.status === 'fulfilled' ? it.value || [] : []);
-      setCategories(ca.status === 'fulfilled' ? ca.value || [] : []);
-    });
-  }, [cid]);
-
-  const load = async () => {
+  // Define load before useEffects to avoid TDZ in minified bundle
+  async function load() {
     if (!cid) return;
     setLoading(true);
     try {
@@ -281,9 +273,18 @@ export default function StockLedger() {
       const itemInt = filterItem ? parseInt(filterItem) : null;
       const data    = await invLedgerAPI.get(api, { node_id: nodeInt, item_id: itemInt, from_date: fromDate, to_date: toDate });
       setLedger(data || []);
-    } catch { setLedger([]); }
+    } catch (e) { setLedger([]); }
     setLoading(false);
-  };
+  }
+
+  useEffect(() => {
+    if (!cid) return;
+    const api = rootCid || cid;
+    Promise.allSettled([invItemAPI.getAll(api), invCategoryAPI.getAll(api)]).then(([it, ca]) => {
+      setItems(it.status === 'fulfilled' ? it.value || [] : []);
+      setCategories(ca.status === 'fulfilled' ? ca.value || [] : []);
+    });
+  }, [cid]);
 
   useEffect(() => { load(); }, [cid]);
 
