@@ -236,6 +236,16 @@ export default function StockLedger() {
   const myParentId    = selectedCompany?.parant_company_unique_id;
   const isChildBranch = !!(myParentId && Number(myParentId) !== 0);
   const rootCid       = isChildBranch ? myParentId : cid;
+  const isAdmin       = !!user?.is_admin || !!user?.is_super_admin;
+
+  // Same visibility logic as other pages
+  const visibleNodes = (() => {
+    if (!nodes.length) return nodes;
+    if (isAdmin) return nodes;
+    if (isChildBranch) return nodes.filter(n => String(n.node_id).replace('b_','') === String(cid));
+    // Parent company non-admin (Sujay): inv_nodes + depth=1 branch only
+    return nodes.filter(n => !String(n.node_id).startsWith('b_') || n.depth === 1 || Number(String(n.node_id).replace('b_','')) === Number(cid));
+  })();
 
   const [ledger,     setLedger]     = useState([]);
   const [items,      setItems]      = useState([]);
@@ -319,7 +329,7 @@ export default function StockLedger() {
           { lbl: 'BRANCH / NODE', el: <select value={filterNode} onChange={e => setFilterNode(e.target.value)}
               style={{ padding: '7px 12px', fontSize: 13, borderRadius: 8, border: '1px solid #e5e7eb' }}>
               <option value="">All Nodes</option>
-              {nodes.map(n => <option key={n.node_id} value={n.node_id}>{n.node_label||n.node_name}</option>)}
+              {visibleNodes.map(n => <option key={n.node_id} value={n.node_id}>{n.node_label||n.node_name}</option>)}
             </select> },
           { lbl: 'CATEGORY', el: <select value={filterCat} onChange={e => { setFilterCat(e.target.value); setFilterItem(''); }}
               style={{ padding: '7px 12px', fontSize: 13, borderRadius: 8, border: '1px solid #e5e7eb' }}>
