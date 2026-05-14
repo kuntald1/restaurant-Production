@@ -28,8 +28,13 @@ const EMPTY_RECIPE = {
 };
 
 export default function InvConsumptionWaste() {
-  const { selectedCompany, showToast, user } = useApp();
+  const { selectedCompany, showToast, user, allCompanies } = useApp();
   const cid = selectedCompany?.company_unique_id;
+
+  // Role-based node visibility (same logic as InvReports)
+  const isSuperAdmin  = !!user?.is_super_admin;
+  const myParentId    = selectedCompany?.parant_company_unique_id;
+  const isChildBranch = !isSuperAdmin && !!myParentId && Number(myParentId) !== 0;
 
   const [tab, setTab]         = useState('consumption');
   const [consumptions, setConsumptions] = useState([]);
@@ -37,7 +42,11 @@ export default function InvConsumptionWaste() {
   const [recipes, setRecipes] = useState([]);
   const [items, setItems]     = useState([]);
   const [uoms, setUoms]       = useState([]);
-  const { nodes } = useInventoryNodes(cid);
+  const { nodes } = useInventoryNodes(cid, selectedCompany, allCompanies);
+  // Filter nodes by role
+  const visibleNodes = isChildBranch
+    ? nodes.filter(n => String(n.node_id).replace('b_','') === String(cid))
+    : nodes;
   const [loading, setLoading] = useState(false);
   const [modal, setModal]     = useState(null);
   const [form, setForm]       = useState(EMPTY_WASTE);
@@ -69,7 +78,17 @@ export default function InvConsumptionWaste() {
   const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }));
   const getItemName = (id) => items.find(i => i.item_id === id)?.item_name || '—';
   const getNodeName = (id) => nodes.find(n => n.node_id === id)?.node_name || '—';
-  const getUomName  = (id) => uoms.find(u => u.uom_id === id)?.uom_name || '—';
+  const getUomName    = (id) => uoms.find(u => u.uom_id === id)?.uom_name || '—';
+  const getItemUomId  = (id) => items.find(i => i.item_id === parseInt(id))?.uom_id || '';
+  const getItemCost   = (id) => items.find(i => i.item_id === parseInt(id))?.standard_cost || 0;
+
+  // Auto-fill UOM and unit cost when item selected in waste form
+  const handleWasteItemChange = (e) => {
+    const itemId = e.target.value;
+    const uomId  = getItemUomId(itemId);
+    const cost   = getItemCost(itemId);
+    setForm(f => ({ ...f, item_id: itemId, uom_id: String(uomId), unit_cost: String(cost) }));
+  };
 
   // ── Consumption ──────────────────────────────────────────────
   const handleConsumptionSubmit = async (e) => {
@@ -298,10 +317,10 @@ export default function InvConsumptionWaste() {
         <Modal title="Record Consumption" onClose={() => setModal(null)} size="md">
           <form onSubmit={handleConsumptionSubmit}>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
-              <FormField label="Node" required>
+              <FormField label="Branch / Node" required>
                 <Select value={form.node_id} onChange={set('node_id')} required>
                   <option value="">— Select Node —</option>
-                  {nodes.map(n => <option key={n.node_id} value={n.node_id}>{n.node_name}</option>)}
+                  {visibleNodes.map(n => <option key={n.node_id} value={n.node_id}>{n.node_label || n.node_name}</option>)}
                 </Select>
               </FormField>
               <FormField label="Date" required>
@@ -323,22 +342,22 @@ export default function InvConsumptionWaste() {
         <Modal title={editId ? 'Edit Waste Entry' : 'Record Waste'} onClose={() => setModal(null)} size="md">
           <form onSubmit={handleWasteSubmit}>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-              <FormField label="Node">
+              <FormField label="Branch / Node">
                 <Select value={form.node_id} onChange={set('node_id')}>
                   <option value="">— Select Node —</option>
-                  {nodes.map(n => <option key={n.node_id} value={n.node_id}>{n.node_name}</option>)}
+                  {visibleNodes.map(n => <option key={n.node_id} value={n.node_id}>{n.node_label || n.node_name}</option>)}
                 </Select>
               </FormField>
               <FormField label="Date" required>
                 <Input type="date" value={form.waste_date} onChange={set('waste_date')} required />
               </FormField>
               <FormField label="Item" required>
-                <Select value={form.item_id} onChange={set('item_id')} required>
+                <Select value={form.item_id} onChange={handleWasteItemChange} required>
                   <option value="">— Select Item —</option>
                   {items.map(i => <option key={i.item_id} value={i.item_id}>{i.item_name}</option>)}
                 </Select>
               </FormField>
-              <FormField label="UOM">
+              <FormField label="UOM (auto-filled, can change)">
                 <Select value={form.uom_id} onChange={set('uom_id')}>
                   <option value="">— UOM —</option>
                   {uoms.map(u => <option key={u.uom_id} value={u.uom_id}>{u.uom_name}</option>)}
@@ -347,7 +366,7 @@ export default function InvConsumptionWaste() {
               <FormField label="Qty Wasted" required>
                 <Input type="number" step="0.001" value={form.qty_wasted} onChange={set('qty_wasted')} required placeholder="0.000" />
               </FormField>
-              <FormField label="Unit Cost (₹)">
+              <FormField label="Unit Cost (₹) — auto from item rate">
                 <Input type="number" step="0.01" value={form.unit_cost} onChange={set('unit_cost')} placeholder="0.00" />
               </FormField>
               <FormField label="Reason">
