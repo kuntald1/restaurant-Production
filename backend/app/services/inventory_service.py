@@ -1126,17 +1126,22 @@ def get_stock_ledger(db: Session, company_id: int, node_id: int = None,
     from sqlalchemy import text as _text
     from datetime import date as _date
 
-    params = {"cid": company_id}
-    node_filter   = "AND :nid IN (g.node_id, t.to_node_id, t.from_node_id, c.node_id, w.node_id, p.node_id)" if node_id else ""
-    item_filter   = "AND :iid IN (gi.item_id, ti.item_id, ci.item_id, wi.item_id, pi.item_id)" if item_id else ""
-    if node_id:  params["nid"] = node_id
-    if item_id:  params["iid"] = item_id
+    params = {"cid": company_id, "fd": str(from_date) if from_date else "2000-01-01", "td": str(to_date) if to_date else str(_date.today())}
 
-    fd = str(from_date) if from_date else "2000-01-01"
-    td = str(to_date)   if to_date   else str(_date.today())
-    params["fd"] = fd; params["td"] = td
+    # Build node and item filters directly into SQL to avoid NULL parameter issues
+    node_cond = f"AND g.node_id = {int(node_id)}"     if node_id else ""
+    node_cond2= f"AND pe.node_id = {int(node_id)}"    if node_id else ""
+    node_cond3= f"AND t.to_node_id = {int(node_id)}"  if node_id else ""
+    node_cond4= f"AND t.from_node_id = {int(node_id)}"if node_id else ""
+    node_cond5= f"AND c.node_id = {int(node_id)}"     if node_id else ""
+    node_cond6= f"AND w.node_id = {int(node_id)}"     if node_id else ""
+    item_cond  = f"AND gi.item_id = {int(item_id)}"   if item_id else ""
+    item_cond2 = f"AND pe.finished_item_id = {int(item_id)}" if item_id else ""
+    item_cond3 = f"AND ti.item_id = {int(item_id)}"   if item_id else ""
+    item_cond4 = f"AND ci.item_id = {int(item_id)}"   if item_id else ""
+    item_cond5 = f"AND wi.item_id = {int(item_id)}"   if item_id else ""
 
-    sql = _text("""
+    sql = _text(f"""
     WITH ledger AS (
 
       -- 1. GRN In
@@ -1151,18 +1156,17 @@ def get_stock_ledger(db: Session, company_id: int, node_id: int = None,
         gi.received_qty           AS qty_in,
         0                         AS qty_out,
         gi.unit_price             AS unit_cost,
-        NULL                      AS reason
+        NULL::text                AS reason
       FROM inv_grn g
       JOIN inv_grn_item gi ON gi.grn_id = g.grn_id
       WHERE g.company_unique_id = :cid
         AND g.status = 'posted'
         AND g.grn_date::date BETWEEN :fd AND :td
-        AND (:nid = g.node_id   OR :nid IS NULL)
-        AND (:iid = gi.item_id  OR :iid IS NULL)
+        {node_cond} {item_cond}
 
       UNION ALL
 
-      -- 2. Production In (finished goods added to CK)
+      -- 2. Production In
       SELECT
         pe.production_date        AS txn_date,
         'Production'              AS txn_type,
@@ -1180,12 +1184,11 @@ def get_stock_ledger(db: Session, company_id: int, node_id: int = None,
         AND pe.status = 'posted'
         AND pe.finished_item_id IS NOT NULL
         AND pe.production_date BETWEEN :fd AND :td
-        AND (:nid = pe.node_id          OR :nid IS NULL)
-        AND (:iid = pe.finished_item_id OR :iid IS NULL)
+        {node_cond2} {item_cond2}
 
       UNION ALL
 
-      -- 3. Transfer In (stock received at to_node)
+      -- 3. Transfer In
       SELECT
         t.transfer_date           AS txn_date,
         'Transfer In'             AS txn_type,
@@ -1203,12 +1206,11 @@ def get_stock_ledger(db: Session, company_id: int, node_id: int = None,
       WHERE t.company_unique_id = :cid
         AND t.status = 'received'
         AND t.transfer_date BETWEEN :fd AND :td
-        AND (:nid = t.to_node_id  OR :nid IS NULL)
-        AND (:iid = ti.item_id    OR :iid IS NULL)
+        {node_cond3} {item_cond3}
 
       UNION ALL
 
-      -- 4. Transfer Out (stock sent from from_node)
+      -- 4. Transfer Out
       SELECT
         t.transfer_date           AS txn_date,
         'Transfer Out'            AS txn_type,
@@ -1226,8 +1228,7 @@ def get_stock_ledger(db: Session, company_id: int, node_id: int = None,
       WHERE t.company_unique_id = :cid
         AND t.status IN ('dispatched','received','rejected')
         AND t.transfer_date BETWEEN :fd AND :td
-        AND (:nid = t.from_node_id OR :nid IS NULL)
-        AND (:iid = ti.item_id     OR :iid IS NULL)
+        {node_cond4} {item_cond3}
 
       UNION ALL
 
@@ -1249,8 +1250,7 @@ def get_stock_ledger(db: Session, company_id: int, node_id: int = None,
       WHERE c.company_unique_id = :cid
         AND c.status = 'posted'
         AND c.consumption_date BETWEEN :fd AND :td
-        AND (:nid = c.node_id  OR :nid IS NULL)
-        AND (:iid = ci.item_id OR :iid IS NULL)
+        {node_cond5} {item_cond4}
 
       UNION ALL
 
@@ -1270,8 +1270,7 @@ def get_stock_ledger(db: Session, company_id: int, node_id: int = None,
       FROM inv_waste w
       WHERE w.company_unique_id = :cid
         AND w.waste_date BETWEEN :fd AND :td
-        AND (:nid = w.node_id  OR :nid IS NULL)
-        AND (:iid = w.item_id  OR :iid IS NULL)
+        {node_cond6} {item_cond5}
 
     )
     SELECT
