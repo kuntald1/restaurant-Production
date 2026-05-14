@@ -1118,186 +1118,111 @@ def get_all_transfers_admin(db: Session, company_id: int):
 # ══════════════════════════════════════════════════════════════
 def get_stock_ledger(db: Session, company_id: int, node_id: int = None,
                      item_id: int = None, from_date=None, to_date=None) -> list:
-    """
-    Returns every stock movement for an item/node combination in chronological order.
-    Sources: GRN, Production, Transfer In, Transfer Out, Consumption, Waste, Audit.
-    Calculates running balance.
-    """
+    """Full stock movement ledger with running balance."""
     from sqlalchemy import text as _text
     from datetime import date as _date
 
-    params = {"cid": company_id, "fd": str(from_date) if from_date else "2000-01-01", "td": str(to_date) if to_date else str(_date.today())}
+    fd = str(from_date) if from_date else "2000-01-01"
+    td = str(to_date)   if to_date   else str(_date.today())
 
-    # Build node and item filters directly into SQL to avoid NULL parameter issues
-    node_cond = f"AND g.node_id = {int(node_id)}"     if node_id else ""
-    node_cond2= f"AND pe.node_id = {int(node_id)}"    if node_id else ""
-    node_cond3= f"AND t.to_node_id = {int(node_id)}"  if node_id else ""
-    node_cond4= f"AND t.from_node_id = {int(node_id)}"if node_id else ""
-    node_cond5= f"AND c.node_id = {int(node_id)}"     if node_id else ""
-    node_cond6= f"AND w.node_id = {int(node_id)}"     if node_id else ""
-    item_cond  = f"AND gi.item_id = {int(item_id)}"   if item_id else ""
-    item_cond2 = f"AND pe.finished_item_id = {int(item_id)}" if item_id else ""
-    item_cond3 = f"AND ti.item_id = {int(item_id)}"   if item_id else ""
-    item_cond4 = f"AND ci.item_id = {int(item_id)}"   if item_id else ""
-    item_cond5 = f"AND wi.item_id = {int(item_id)}"   if item_id else ""
+    nc  = f"AND g.node_id = {int(node_id)}"          if node_id else ""
+    nc2 = f"AND pe.node_id = {int(node_id)}"          if node_id else ""
+    nc3 = f"AND t.to_node_id = {int(node_id)}"        if node_id else ""
+    nc4 = f"AND t.from_node_id = {int(node_id)}"      if node_id else ""
+    nc5 = f"AND c.node_id = {int(node_id)}"           if node_id else ""
+    nc6 = f"AND w.node_id = {int(node_id)}"           if node_id else ""
+    ic  = f"AND gi.item_id = {int(item_id)}"          if item_id else ""
+    ic2 = f"AND pe.finished_item_id = {int(item_id)}" if item_id else ""
+    ic3 = f"AND ti.item_id = {int(item_id)}"          if item_id else ""
+    ic4 = f"AND ci.item_id = {int(item_id)}"          if item_id else ""
+    ic5 = f"AND w.item_id = {int(item_id)}"           if item_id else ""
 
-    sql = _text(f"""
+    sql = f"""
     WITH ledger AS (
 
-      -- 1. GRN In
-      SELECT
-        g.grn_date::date          AS txn_date,
-        'GRN In'                  AS txn_type,
-        'grn_in'                  AS txn_code,
-        g.grn_id                  AS txn_id,
-        g.grn_number              AS ref_number,
-        g.node_id                 AS node_id,
-        gi.item_id                AS item_id,
-        gi.received_qty           AS qty_in,
-        0                         AS qty_out,
-        gi.unit_price             AS unit_cost,
-        NULL::text                AS reason
+      SELECT g.grn_date::date AS txn_date, 'GRN In' AS txn_type, 'grn_in' AS txn_code,
+             g.grn_id AS txn_id, g.grn_number AS ref_number,
+             g.node_id, gi.item_id,
+             gi.received_qty AS qty_in, 0::numeric AS qty_out, gi.unit_price AS unit_cost
       FROM inv_grn g
       JOIN inv_grn_item gi ON gi.grn_id = g.grn_id
-      WHERE g.company_unique_id = :cid
-        AND g.status = 'posted'
-        AND g.grn_date::date BETWEEN :fd AND :td
-        {node_cond} {item_cond}
+      WHERE g.company_unique_id = {company_id} AND g.status = 'posted'
+        AND g.grn_date::date BETWEEN '{fd}' AND '{td}' {nc} {ic}
 
       UNION ALL
 
-      -- 2. Production In
-      SELECT
-        pe.production_date        AS txn_date,
-        'Production'              AS txn_type,
-        'production_in'           AS txn_code,
-        pe.production_id          AS txn_id,
-        pe.production_number      AS ref_number,
-        pe.node_id                AS node_id,
-        pe.finished_item_id       AS item_id,
-        pe.produced_qty           AS qty_in,
-        0                         AS qty_out,
-        0                         AS unit_cost,
-        'Produced from recipe'    AS reason
+      SELECT pe.production_date AS txn_date, 'Production' AS txn_type, 'production_in' AS txn_code,
+             pe.production_id AS txn_id, pe.production_number AS ref_number,
+             pe.node_id, pe.finished_item_id AS item_id,
+             pe.produced_qty AS qty_in, 0::numeric AS qty_out, 0::numeric AS unit_cost
       FROM inv_production_entry pe
-      WHERE pe.company_unique_id = :cid
-        AND pe.status = 'posted'
+      WHERE pe.company_unique_id = {company_id} AND pe.status = 'posted'
         AND pe.finished_item_id IS NOT NULL
-        AND pe.production_date BETWEEN :fd AND :td
-        {node_cond2} {item_cond2}
+        AND pe.production_date BETWEEN '{fd}' AND '{td}' {nc2} {ic2}
 
       UNION ALL
 
-      -- 3. Transfer In
-      SELECT
-        t.transfer_date           AS txn_date,
-        'Transfer In'             AS txn_type,
-        'transfer_in'             AS txn_code,
-        t.transfer_id             AS txn_id,
-        t.transfer_number         AS ref_number,
-        t.to_node_id              AS node_id,
-        ti.item_id                AS item_id,
-        ti.received_qty           AS qty_in,
-        0                         AS qty_out,
-        0                         AS unit_cost,
-        'Received from transfer'  AS reason
+      SELECT t.transfer_date AS txn_date, 'Transfer In' AS txn_type, 'transfer_in' AS txn_code,
+             t.transfer_id AS txn_id, t.transfer_number AS ref_number,
+             t.to_node_id AS node_id, ti.item_id,
+             COALESCE(ti.received_qty, ti.requested_qty) AS qty_in, 0::numeric AS qty_out, 0::numeric AS unit_cost
       FROM inv_stock_transfer t
       JOIN inv_stock_transfer_item ti ON ti.transfer_id = t.transfer_id
-      WHERE t.company_unique_id = :cid
-        AND t.status = 'received'
-        AND t.transfer_date BETWEEN :fd AND :td
-        {node_cond3} {item_cond3}
+      WHERE t.company_unique_id = {company_id} AND t.status = 'received'
+        AND t.transfer_date BETWEEN '{fd}' AND '{td}' {nc3} {ic3}
 
       UNION ALL
 
-      -- 4. Transfer Out
-      SELECT
-        t.transfer_date           AS txn_date,
-        'Transfer Out'            AS txn_type,
-        'transfer_out'            AS txn_code,
-        t.transfer_id             AS txn_id,
-        t.transfer_number         AS ref_number,
-        t.from_node_id            AS node_id,
-        ti.item_id                AS item_id,
-        0                         AS qty_in,
-        ti.dispatched_qty         AS qty_out,
-        0                         AS unit_cost,
-        'Dispatched to branch'    AS reason
+      SELECT t.transfer_date AS txn_date, 'Transfer Out' AS txn_type, 'transfer_out' AS txn_code,
+             t.transfer_id AS txn_id, t.transfer_number AS ref_number,
+             t.from_node_id AS node_id, ti.item_id,
+             0::numeric AS qty_in, ti.requested_qty AS qty_out, 0::numeric AS unit_cost
       FROM inv_stock_transfer t
       JOIN inv_stock_transfer_item ti ON ti.transfer_id = t.transfer_id
-      WHERE t.company_unique_id = :cid
-        AND t.status IN ('dispatched','received','rejected')
-        AND t.transfer_date BETWEEN :fd AND :td
-        {node_cond4} {item_cond3}
+      WHERE t.company_unique_id = {company_id} AND t.status IN ('dispatched','received')
+        AND t.transfer_date BETWEEN '{fd}' AND '{td}' {nc4} {ic3}
 
       UNION ALL
 
-      -- 5. Consumption Out
-      SELECT
-        c.consumption_date        AS txn_date,
-        'Consumption'             AS txn_type,
-        'consumption_out'         AS txn_code,
-        c.consumption_id          AS txn_id,
-        c.consumption_number      AS ref_number,
-        c.node_id                 AS node_id,
-        ci.item_id                AS item_id,
-        0                         AS qty_in,
-        ci.qty_consumed           AS qty_out,
-        ci.unit_cost              AS unit_cost,
-        'Consumed'                AS reason
+      SELECT c.consumption_date AS txn_date, 'Consumption' AS txn_type, 'consumption_out' AS txn_code,
+             c.consumption_id AS txn_id, CONCAT('CON-', c.consumption_id) AS ref_number,
+             c.node_id, ci.item_id,
+             0::numeric AS qty_in, ci.qty_consumed AS qty_out, ci.unit_cost
       FROM inv_stock_consumption c
       JOIN inv_stock_consumption_item ci ON ci.consumption_id = c.consumption_id
-      WHERE c.company_unique_id = :cid
-        AND c.status = 'posted'
-        AND c.consumption_date BETWEEN :fd AND :td
-        {node_cond5} {item_cond4}
+      WHERE c.company_unique_id = {company_id}
+        AND c.consumption_date BETWEEN '{fd}' AND '{td}' {nc5} {ic4}
 
       UNION ALL
 
-      -- 6. Waste Out
-      SELECT
-        w.waste_date              AS txn_date,
-        'Waste'                   AS txn_type,
-        'waste_out'               AS txn_code,
-        w.waste_id                AS txn_id,
-        CONCAT('WST-', w.waste_id) AS ref_number,
-        w.node_id                 AS node_id,
-        w.item_id                 AS item_id,
-        0                         AS qty_in,
-        w.qty_wasted              AS qty_out,
-        w.unit_cost               AS unit_cost,
-        w.waste_reason            AS reason
+      SELECT w.waste_date AS txn_date, 'Waste' AS txn_type, 'waste_out' AS txn_code,
+             w.waste_id AS txn_id, CONCAT('WST-', w.waste_id) AS ref_number,
+             w.node_id, w.item_id,
+             0::numeric AS qty_in, w.qty_wasted AS qty_out, w.unit_cost
       FROM inv_waste w
-      WHERE w.company_unique_id = :cid
-        AND w.waste_date BETWEEN :fd AND :td
-        {node_cond6} {item_cond5}
+      WHERE w.company_unique_id = {company_id}
+        AND w.waste_date BETWEEN '{fd}' AND '{td}' {nc6} {ic5}
 
     )
-    SELECT
-      l.txn_date,
-      l.txn_type,
-      l.txn_code,
-      l.txn_id,
-      l.ref_number,
-      l.node_id,
-      n.node_name,
-      l.item_id,
-      ii.item_name,
-      ic.category_name,
-      COALESCE(l.qty_in,  0)::float AS qty_in,
-      COALESCE(l.qty_out, 0)::float AS qty_out,
-      COALESCE(l.unit_cost, 0)::float AS unit_cost
+    SELECT l.txn_date, l.txn_type, l.txn_code, l.txn_id, l.ref_number,
+           l.node_id,
+           COALESCE(n.node_name, 'Node #' || l.node_id::text) AS node_name,
+           l.item_id,
+           COALESCE(ii.item_name, 'Item #' || l.item_id::text) AS item_name,
+           COALESCE(ic.category_name, '') AS category_name,
+           COALESCE(l.qty_in,   0)::float AS qty_in,
+           COALESCE(l.qty_out,  0)::float AS qty_out,
+           COALESCE(l.unit_cost,0)::float AS unit_cost
     FROM ledger l
-    LEFT JOIN inv_node n         ON n.node_id = l.node_id
-    LEFT JOIN inv_item ii        ON ii.item_id = l.item_id
+    LEFT JOIN inv_node n           ON n.node_id = l.node_id
+    LEFT JOIN inv_item ii          ON ii.item_id = l.item_id
     LEFT JOIN inv_item_category ic ON ic.item_category_id = ii.item_category_id
     WHERE l.item_id IS NOT NULL
     ORDER BY l.txn_date ASC, l.txn_id ASC
-    """)
+    """
 
-    rows = db.execute(sql, params).fetchall()
+    rows = db.execute(_text(sql)).fetchall()
 
-    # Build running balance per item+node
     balance_map = {}
     result = []
     for r in rows:
@@ -1306,20 +1231,20 @@ def get_stock_ledger(db: Session, company_id: int, node_id: int = None,
         bal = round(bal + float(r.qty_in) - float(r.qty_out), 3)
         balance_map[key] = bal
         result.append({
-            "txn_date":     str(r.txn_date),
-            "txn_type":     r.txn_type,
-            "txn_code":     r.txn_code,
-            "txn_id":       r.txn_id,
-            "ref_number":   r.ref_number,
-            "node_id":      r.node_id,
-            "node_name":    r.node_name or f"Node #{r.node_id}",
-            "item_id":      r.item_id,
-            "item_name":    r.item_name or f"Item #{r.item_id}",
-            "category_name":r.category_name or "—",
-            "qty_in":       float(r.qty_in),
-            "qty_out":      float(r.qty_out),
-            "unit_cost":    float(r.unit_cost),
-            "value":        round(float(r.qty_in or r.qty_out) * float(r.unit_cost), 2),
-            "balance":      bal,
+            "txn_date":      str(r.txn_date),
+            "txn_type":      r.txn_type,
+            "txn_code":      r.txn_code,
+            "txn_id":        r.txn_id,
+            "ref_number":    r.ref_number or "",
+            "node_id":       r.node_id,
+            "node_name":     r.node_name,
+            "item_id":       r.item_id,
+            "item_name":     r.item_name,
+            "category_name": r.category_name,
+            "qty_in":        float(r.qty_in),
+            "qty_out":       float(r.qty_out),
+            "unit_cost":     float(r.unit_cost),
+            "value":         round(float(r.qty_in or r.qty_out) * float(r.unit_cost), 2),
+            "balance":       bal,
         })
     return result
