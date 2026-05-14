@@ -54,9 +54,18 @@ export default function InvConsumptionWaste() {
       // Child branch (Alok): only their own node
       return nodes.filter(n => String(n.node_id).replace('b_','') === String(cid));
     }
-    // Parent company non-admin (Sujay): only inv_node rows owned by company_unique_id=1
-    // These are WH, CK, Main Branch — NOT child company branches (b_ prefixed)
-    return nodes.filter(n => !String(n.node_id).startsWith('b_'));
+    // Parent company non-admin (Sujay):
+    // Show inv_node rows (WH, CK) + direct child company branches
+    // but exclude grandchild branches
+    const directChildCids = (allCompanies || [])
+      .filter(c => Number(c.parant_company_unique_id) === Number(cid))
+      .map(c => Number(c.company_unique_id));
+    return nodes.filter(n => {
+      const nid = String(n.node_id);
+      if (!nid.startsWith('b_')) return true; // inv_node rows (WH, CK)
+      const numId = Number(nid.replace('b_', ''));
+      return directChildCids.includes(numId); // only direct children
+    });
   })();
   const [loading, setLoading] = useState(false);
   const [modal, setModal]     = useState(null);
