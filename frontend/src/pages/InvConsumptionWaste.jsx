@@ -7,7 +7,7 @@
 import { useEffect, useState } from 'react';
 import {
   invConsumptionAPI, invWasteAPI, invRecipeAPI,
-  invItemAPI, invUomAPI, invStockAPI
+  invItemAPI, invUomAPI, invStockAPI, foodMenuAPI
 } from '../services/api';
 import { useInventoryNodes } from './useInventoryNodes';
 import { Table, Modal, Badge, Spinner, PageHeader, FormField, Input, Select, Textarea, ConfirmDialog } from '../components/UI';
@@ -23,7 +23,7 @@ const EMPTY_WASTE = {
 const WASTE_REASONS = ['spoilage', 'overcooked', 'expired', 'dropped', 'quality_reject', 'other'];
 
 const EMPTY_RECIPE = {
-  recipe_name: '', food_menu_id: '', yield_qty: '1', yield_uom_id: '',
+  recipe_name: '', food_menu_id: '', yield_qty: '1', yield_uom_id: ',
   preparation_time: '', is_sub_recipe: false, notes: '',
 };
 
@@ -77,11 +77,12 @@ export default function InvConsumptionWaste() {
     setLoading(true);
     try {
       const apiCid = rootCid || cid;  // items/recipes under root company
-      const [c, w, r, i, u, sb] = await Promise.allSettled([
+      const [c, w, r, i, u, sb, fm] = await Promise.allSettled([
         invConsumptionAPI.getAll(cid), invWasteAPI.getAll(cid), invRecipeAPI.getAll(cid),
         invItemAPI.getAll(apiCid), invUomAPI.getAll(apiCid),
         // For child branch: load stock balance to filter items with stock only
         isChildBranch ? invStockAPI.getBalance(apiCid, Number(cid)) : Promise.resolve(null),
+        foodMenuAPI.getAll(cid),
       ]);
       const allItems   = i.status === 'fulfilled' ? (i.value || []) : [];
       const stockData  = sb.status === 'fulfilled' ? (sb.value || []) : [];
@@ -94,6 +95,7 @@ export default function InvConsumptionWaste() {
       setRecipes(r.status === 'fulfilled' ? (r.value || []) : []);
       setItems(itemsToShow);
       setUoms(u.status === 'fulfilled' ? (u.value || []) : []);
+      setFoodMenus(fm.status === 'fulfilled' ? (fm.value || []) : []);
     } catch {}
     setLoading(false);
   };
@@ -422,6 +424,16 @@ export default function InvConsumptionWaste() {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 12 }}>
               <FormField label="Recipe Name" required>
                 <Input value={form.recipe_name} onChange={set('recipe_name')} required placeholder="e.g. Chicken Biryani" />
+              </FormField>
+              <FormField label="🔗 Linked Menu Item (for POS auto-deduction)">
+                <Select value={form.food_menu_id} onChange={set('food_menu_id')}>
+                  <option value="">— Not linked —</option>
+                  {foodMenus.map(m => (
+                    <option key={m.food_menu_id} value={m.food_menu_id}>
+                      {m.item_name || m.name} {m.price ? `· ₹${m.price}` : ''}
+                    </option>
+                  ))}
+                </Select>
               </FormField>
               <FormField label="Yield Quantity">
                 <Input type="number" step="0.001" value={form.yield_qty} onChange={set('yield_qty')} placeholder="1" />
