@@ -71,6 +71,14 @@ def update(production_id: int, body: ProductionUpdateIn, db: Session = Depends(g
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+@router.get("/{production_id}/check-stock")
+def check_stock(production_id: int, db: Session = Depends(get_db)):
+    """Check if CK has enough stock before posting."""
+    try:
+        return svc.check_stock_sufficiency(db, production_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
 @router.post("/{production_id}/post")
 def post_entry(
     production_id: int,

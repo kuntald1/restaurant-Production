@@ -357,7 +357,8 @@ export const advPoAPI = {
 
 // ── Production Entry ──────────────────────────────────────────
 export const productionAPI = {
-  getAll:   (cid)          => request('GET',    `/production/list/${cid}`),
+  getAll:       (cid)       => request('GET',    `/production/list/${cid}`),
+  checkStock:   (id)        => request('GET',    `/production/${id}/check-stock`),
   getById:  (id)           => request('GET',    `/production/${id}`),
   create:   (data)         => request('POST',   '/production', data),
   update:   (id, data)     => request('PUT',    `/production/${id}`, data),
