@@ -66,9 +66,12 @@ export default function InvStockAudit() {
       // Items from root company (master data)
       // Balance scoped to selected node only
       const nodeInt = parseInt(String(nodeId).replace('b_',''));
+      // rootCid: items stored under root company, not branch company
+      const myParent = selectedCompany?.parant_company_unique_id;
+      const apiCid   = (myParent && Number(myParent) !== 0) ? myParent : cid;
       const [balance, allItems] = await Promise.all([
-        invStockAPI.getBalance(cid, nodeInt),
-        invItemAPI.getAll(cid),
+        invStockAPI.getBalance(apiCid, nodeInt),
+        invItemAPI.getAll(apiCid),
       ]);
       const balMap = {};
       // Only include balance rows matching this specific node
