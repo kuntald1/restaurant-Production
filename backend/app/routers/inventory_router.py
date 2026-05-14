@@ -598,3 +598,18 @@ def get_all_nodes_for_display(company_id: int, db: Session = Depends(get_db)):
     for r in companies:
         result[str(r[0])] = f"🏪 {r[1]}"
     return result
+
+@router.get("/ledger/{company_id}")
+def get_stock_ledger(
+    company_id: int,
+    node_id:    int  = None,
+    item_id:    int  = None,
+    from_date:  str  = None,
+    to_date:    str  = None,
+    db: Session = Depends(get_db)
+):
+    """Stock ledger — full movement history with running balance."""
+    from datetime import date
+    fd = date.fromisoformat(from_date) if from_date else None
+    td = date.fromisoformat(to_date)   if to_date   else None
+    return svc.get_stock_ledger(db, company_id, node_id, item_id, fd, td)

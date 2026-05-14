@@ -330,6 +330,18 @@ export const invReportsAPI = {
   supplierOutstanding: (companyId)         => request('GET', `/inventory/report/supplier-outstanding/${companyId}`),
 };
 
+// ── Stock Ledger ──────────────────────────────────────────────
+export const invLedgerAPI = {
+  get: (cid, params = {}) => {
+    const q = new URLSearchParams();
+    if (params.node_id)   q.set('node_id',   params.node_id);
+    if (params.item_id)   q.set('item_id',   params.item_id);
+    if (params.from_date) q.set('from_date', params.from_date);
+    if (params.to_date)   q.set('to_date',   params.to_date);
+    return request('GET', `/inventory/ledger/${cid}?${q.toString()}`);
+  },
+};
+
 // ── Advanced PO — Rule Engine (Phase 1.5) ────────────────────
 export const advPoAPI = {
   // Weather rules
