@@ -426,7 +426,7 @@ const loadMenu = useCallback(async () => {
       setIsOnline(true);
       const count = updatePendingCount();
       if (count > 0) {
-        setSyncStatus({ total: count, remaining: count, syncing: true });
+        setSyncStatus({ total: count, remaining: count, syncing: count > 0 });
         setShowSyncedMsg(false);
       }
       syncOfflineOrders();
@@ -631,7 +631,7 @@ const loadMenu = useCallback(async () => {
     setSyncStatus({ total: 0, remaining: 0, syncing: false }); // always hide bar when done
     if (remaining === 0) {
       setShowSyncedMsg(true);
-      setTimeout(() => setShowSyncedMsg(false), 4000);
+      setTimeout(() => setShowSyncedMsg(false), 3000);
     }
   };
 
@@ -1584,7 +1584,7 @@ ${company.hsn ? `<div class="center muted" style="margin-top:4px">HSN: ${company
       )}
 
       {/* ── BACK ONLINE — green top banner ── */}
-      {isOnline && syncStatus.syncing && (
+      {isOnline && syncStatus.syncing && syncStatus.total > 0 && (
         <div style={{
           position:'fixed', top:0, left:0, right:0, zIndex:9999,
           background:'#16a34a', color:'#fff',
@@ -1611,7 +1611,7 @@ ${company.hsn ? `<div class="center muted" style="margin-top:4px">HSN: ${company
           {pendingCount > 50 && <span style={{ opacity:0.8 }}>— Restore internet soon!</span>}
         </div>
       )}
-      {isOnline && syncStatus.syncing && (
+      {isOnline && syncStatus.syncing && syncStatus.total > 0 && (
         <div style={{
           position:'fixed', bottom:0, left:240, right:0, zIndex:150,
           background:'#1e3a5f', color:'#bfdbfe',
