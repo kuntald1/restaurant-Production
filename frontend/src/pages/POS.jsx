@@ -628,7 +628,10 @@ const loadMenu = useCallback(async () => {
     }
     // Clear sync status when done
     const remaining = updatePendingCount();
-    setSyncStatus({ total: 0, remaining: 0, syncing: false }); // always hide bar when done
+    // Hide sync bar after short delay to show 100%
+    setTimeout(() => {
+      setSyncStatus({ total: 0, remaining: 0, syncing: false });
+    }, 1500);
     if (remaining === 0) {
       setShowSyncedMsg(true);
       setTimeout(() => setShowSyncedMsg(false), 3000);
