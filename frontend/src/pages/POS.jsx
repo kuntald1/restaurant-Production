@@ -318,7 +318,7 @@ const loadMenu = useCallback(async () => {
     if (cached.length > 0) {
       setMenuItems(cached);
       setCategories([{ id: 'All', name: 'All' }, ...cachedCats.map(c => ({ id: c.food_category_id, name: c.category_name }))]);
-      showToast('📴 Showing cached menu (offline)', 'info');
+      showToast('📴 Showing cached menu (offline)', 'warning');
     }
   }
 }, [cid]);
@@ -335,6 +335,11 @@ const loadMenu = useCallback(async () => {
       if (order.order_status === 'billed') {
         try { setBill(await posBillAPI.getByOrder(orderId)); } catch { setBill(null); }
       } else { setBill(null); }
+      // Clear per-order offline cache since we have fresh server data
+      try {
+        localStorage.removeItem(`rms_offline_order_items_${orderId}`);
+        localStorage.removeItem(`rms_offline_order_deleted_${orderId}`);
+      } catch {}
     } catch (e) {
       // If offline, use the fallback order data from the running orders list
       if (fallbackOrder) {
@@ -365,7 +370,7 @@ const loadMenu = useCallback(async () => {
         setIsOfflineOrder(false);
         setKots([]);
         setBill(null);
-        showToast('📴 Showing cached order data (offline)', 'info');
+        showToast('📴 Showing cached order data (offline)', 'warning');
       } else {
         showToast('📴 Cannot load order details while offline', 'error');
       }
