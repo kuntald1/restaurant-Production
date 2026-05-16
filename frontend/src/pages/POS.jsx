@@ -774,15 +774,6 @@ const loadMenu = useCallback(async () => {
     }
 
     try {
-      // Optimistic update — show item immediately
-      setActiveOrder(prev => {
-        if (!prev) return prev;
-        const items = prev.items ? prev.items.map(i => ({...i})) : [];
-        const ex = items.find(i => i.food_menu_id === menuItem.food_menu_id && !i.is_cancelled);
-        if (ex) { ex.quantity = (ex.quantity || 1) + 1; }
-        else { items.push({ food_menu_id: menuItem.food_menu_id, item_name: menuItem.name, item_code: menuItem.code || '', unit_price: Math.round(parseFloat(menuItem.sale_price || 0)), quantity: 1, is_veg: menuItem.is_veg !== false, is_cancelled: false, order_item_id: `OPT_${Date.now()}` }); }
-        return { ...prev, items };
-      });
       await posOrderAPI.addItem(activeOrder.order_id, cid, {
         food_menu_id:  menuItem.food_menu_id,
         item_name:     menuItem.name,
