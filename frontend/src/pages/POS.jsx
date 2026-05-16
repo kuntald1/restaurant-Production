@@ -819,10 +819,35 @@ const loadMenu = useCallback(async () => {
         quantity:      1,
         is_veg:        menuItem.is_veg !== false,
       });
-      // Reload to get server-assigned order_item_ids
       await loadOrderDetail(activeOrder.order_id);
       await loadOrders();
-    } catch (e) { showToast(e.message, 'error'); }
+    } catch (e) {
+      if (!isOnlineRef.current) {
+        // Offline — save to queue and update local state
+        try {
+          const key = `rms_pending_items_${cid}`;
+          const pending = JSON.parse(localStorage.getItem(key) || '[]');
+          pending.push({ order_id: activeOrder.order_id, food_menu_id: menuItem.food_menu_id, item_name: menuItem.name, item_code: menuItem.code || '', category_name: menuItem.category_name || '', unit_price: Math.round(parseFloat(menuItem.sale_price || 0)), quantity: 1, is_veg: menuItem.is_veg !== false });
+          localStorage.setItem(key, JSON.stringify(pending));
+          const orderKey = `rms_offline_order_items_${activeOrder.order_id}`;
+          const cached = JSON.parse(localStorage.getItem(orderKey) || '[]');
+          const ex = cached.find(i => i.food_menu_id === menuItem.food_menu_id);
+          if (ex) ex.quantity += 1;
+          else cached.push({ food_menu_id: menuItem.food_menu_id, item_name: menuItem.name, unit_price: Math.round(parseFloat(menuItem.sale_price || 0)), quantity: 1, is_veg: menuItem.is_veg !== false, is_cancelled: false, order_item_id: `OFFLINE_${menuItem.food_menu_id}_${Date.now()}`, kot_item_status: null });
+          localStorage.setItem(orderKey, JSON.stringify(cached));
+        } catch {}
+        setActiveOrder(prev => {
+          if (!prev) return prev;
+          const items = prev.items ? prev.items.map(i => ({...i})) : [];
+          const ex = items.find(i => i.food_menu_id === menuItem.food_menu_id && !i.is_cancelled);
+          if (ex) ex.quantity = (ex.quantity || 1) + 1;
+          else items.push({ food_menu_id: menuItem.food_menu_id, item_name: menuItem.name, unit_price: Math.round(parseFloat(menuItem.sale_price || 0)), quantity: 1, is_veg: menuItem.is_veg !== false, is_cancelled: false, order_item_id: `OFFLINE_${menuItem.food_menu_id}_${Date.now()}`, kot_item_status: null });
+          return { ...prev, items };
+        });
+      } else {
+        showToast(e.message, 'error');
+      }
+    }
   };
 
   // ── Item Note (kitchen instruction) ──────────────────────
@@ -972,7 +997,23 @@ const loadMenu = useCallback(async () => {
       await posOrderAPI.updateQty(activeOrder.order_id, item.order_item_id, newQty);
       await loadOrderDetail(activeOrder.order_id);
       await loadOrders();
-    } catch (e) { showToast(e.message, 'error'); }
+    } catch (e) {
+      // If failed because we're offline, do local update
+      if (!isOnlineRef.current) {
+        setActiveOrder(prev => {
+          if (!prev) return prev;
+          const items = [...(prev.items || [])];
+          const idx = items.findIndex(i => i.order_item_id === item.order_item_id);
+          if (idx === -1) return prev;
+          const nq = items[idx].quantity + delta;
+          if (nq <= 0) items.splice(idx, 1);
+          else items[idx] = { ...items[idx], quantity: nq };
+          return { ...prev, items };
+        });
+      } else {
+        showToast(e.message, 'error');
+      }
+    }
   };
 
   // ── Send KOT ─────────────────────────────────────────────
