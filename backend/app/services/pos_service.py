@@ -610,15 +610,16 @@ def _deduct_inventory_for_bill(db, order, company_id: int):
         if cons_items:
             cons_result = db.execute(text("""
                 INSERT INTO inv_stock_consumption
-                    (company_unique_id, node_id, consumption_date, consumption_type,
-                     status, notes, created_at)
-                VALUES (:cid, :nid, :dt, 'pos_auto', 'posted', :notes, NOW())
+                    (company_unique_id, node_id, consumption_date, reference_type,
+                     reference_id, notes, created_at)
+                VALUES (:cid, :nid, :dt, 'pos_order', :ref_id, :notes, NOW())
                 RETURNING consumption_id
             """), {
-                "cid":   company_id,
-                "nid":   node_id,
-                "dt":    _date.today(),
-                "notes": f"Auto-deducted for Order #{order.order_number}",
+                "cid":    company_id,
+                "nid":    node_id,
+                "dt":     _date.today(),
+                "ref_id": order.order_id,
+                "notes":  f"Auto-deducted for Order #{order.order_number}",
             }).fetchone()
 
             if cons_result:
@@ -626,10 +627,10 @@ def _deduct_inventory_for_bill(db, order, company_id: int):
                 for ci in cons_items:
                     db.execute(text("""
                         INSERT INTO inv_stock_consumption_item
-                            (consumption_id, item_id, qty_consumed, unit_cost, company_unique_id)
-                        VALUES (:cid, :iid, :qty, :cost, :company_id)
+                            (consumption_id, item_id, qty_consumed, unit_cost, company_unique_id, is_active)
+                        VALUES (:cons_id, :iid, :qty, :cost, :company_id, TRUE)
                     """), {
-                        "cid":        cons_id,
+                        "cons_id":    cons_id,
                         "iid":        ci["item_id"],
                         "qty":        ci["qty"],
                         "cost":       ci["unit_cost"],
