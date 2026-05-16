@@ -436,22 +436,37 @@ const loadMenu = useCallback(async () => {
       }
     };
 
-    // Poll every 2 seconds for fast offline detection
+    // Poll every 3 seconds — debounce online/offline transitions
     let wasOnline = true;
+    let consecutiveOnline = 0;
+    let consecutiveOffline = 0;
+    const THRESHOLD = 2; // need 2 consecutive checks before switching state
+
     const poll = setInterval(async () => {
       const reallyOnline = await checkRealConnectivity();
-      setIsOnline(reallyOnline);
-      if (reallyOnline && !wasOnline) {
-        // Just came back online — trigger sync once
-        goOnline();
-      } else if (!reallyOnline && wasOnline) {
-        goOffline();
+      if (reallyOnline) {
+        consecutiveOnline++;
+        consecutiveOffline = 0;
+        if (consecutiveOnline >= THRESHOLD && !wasOnline) {
+          wasOnline = true;
+          goOnline();
+        } else if (consecutiveOnline >= THRESHOLD) {
+          setIsOnline(true);
+        }
+      } else {
+        consecutiveOffline++;
+        consecutiveOnline = 0;
+        if (consecutiveOffline >= THRESHOLD && wasOnline) {
+          wasOnline = false;
+          goOffline();
+        } else if (consecutiveOffline >= THRESHOLD) {
+          setIsOnline(false);
+        }
       }
-      wasOnline = reallyOnline;
-    }, 2000);
+    }, 3000);
 
-    // Browser offline event — fires instantly, no need to verify
-    const onBrowserOffline = () => goOffline();
+    // Browser offline event — fires instantly, reliable
+    const onBrowserOffline = () => { consecutiveOffline = THRESHOLD; consecutiveOnline = 0; goOffline(); };
     const onBrowserOnline  = () => goOnline();
 
     window.addEventListener('offline', onBrowserOffline);
