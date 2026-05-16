@@ -338,6 +338,20 @@ const loadMenu = useCallback(async () => {
     } catch (e) {
       // If offline, use the fallback order data from the running orders list
       if (fallbackOrder) {
+        // Merge any offline-added items from per-order cache
+        try {
+          const orderKey = `rms_offline_order_items_${fallbackOrder.order_id}`;
+          const cachedItems = JSON.parse(localStorage.getItem(orderKey) || '[]');
+          if (cachedItems.length > 0) {
+            const baseItems = [...(fallbackOrder.items || [])];
+            cachedItems.forEach(ci => {
+              const ex = baseItems.find(i => i.food_menu_id === ci.food_menu_id);
+              if (ex) { ex.quantity = Math.max(ex.quantity, ci.quantity); }
+              else { baseItems.push(ci); }
+            });
+            fallbackOrder = { ...fallbackOrder, items: baseItems };
+          }
+        } catch {}
         setActiveOrder(fallbackOrder);
         setIsOfflineOrder(false);
         setKots([]);
@@ -442,11 +456,19 @@ const loadMenu = useCallback(async () => {
       const syncedDels = [];
       for (const del of pendingDeletions) {
         try {
-          // Set qty to 0 = delete
           await posOrderAPI.updateQty(del.order_id, del.order_item_id, 0);
           syncedDels.push(del);
           anySynced = true;
-        } catch(e) { console.error('Deletion sync failed:', e); }
+        } catch(e) {
+          // Skip 404 (item not found) and 400 (order billed) — clear these stale entries
+          const status = e?.status || e?.response?.status;
+          if (status === 404 || status === 400) {
+            syncedDels.push(del); // Mark as done to remove from queue
+            console.warn('Skipping stale deletion:', del, e.message);
+          } else {
+            console.error('Deletion sync failed:', e);
+          }
+        }
       }
       if (syncedDels.length > 0) {
         localStorage.setItem(delKey, JSON.stringify(pendingDeletions.filter(d => !syncedDels.includes(d))));
@@ -567,6 +589,8 @@ const loadMenu = useCallback(async () => {
         }
 
         markOfflineOrderSynced(order.offline_id);
+        // Clear per-order offline cache after sync
+        try { localStorage.removeItem(`rms_offline_order_items_${serverOrder?.order_id}`); } catch {}
         synced++;
       } catch(e) { console.error('Sync failed:', order.offline_id, e); }
     }
@@ -671,23 +695,33 @@ const loadMenu = useCallback(async () => {
     // For online orders that are now offline — update local state AND save to pending queue
     if (!isOnline) {
       showToast('📴 Offline — item added, will sync when online', 'info');
+      const newItem = {
+        order_id:      activeOrder.order_id,
+        food_menu_id:  menuItem.food_menu_id,
+        item_name:     menuItem.name,
+        item_code:     menuItem.code || '',
+        category_name: menuItem.category_name || '',
+        unit_price:    Math.round(parseFloat(menuItem.sale_price || 0)),
+        quantity:      1,
+        is_veg:        menuItem.is_veg !== false,
+      };
       // Save to pending items queue for sync
       try {
         const key = `rms_pending_items_${cid}`;
         const pendingItems = JSON.parse(localStorage.getItem(key) || '[]');
-        pendingItems.push({
-          order_id:      activeOrder.order_id,
-          food_menu_id:  menuItem.food_menu_id,
-          item_name:     menuItem.name,
-          item_code:     menuItem.code || '',
-          category_name: menuItem.category_name || '',
-          unit_price:    Math.round(parseFloat(menuItem.sale_price || 0)),
-          quantity:      1,
-          is_veg:        menuItem.is_veg !== false,
-        });
+        pendingItems.push(newItem);
         localStorage.setItem(key, JSON.stringify(pendingItems));
       } catch {}
-      // Update local UI state
+      // Save to per-order offline cache so switching orders preserves items
+      try {
+        const orderKey = `rms_offline_order_items_${activeOrder.order_id}`;
+        const cachedItems = JSON.parse(localStorage.getItem(orderKey) || '[]');
+        const ex = cachedItems.find(i => i.food_menu_id === menuItem.food_menu_id);
+        if (ex) { ex.quantity += 1; }
+        else { cachedItems.push({ ...newItem, order_item_id: Date.now(), is_cancelled: false }); }
+        localStorage.setItem(orderKey, JSON.stringify(cachedItems));
+      } catch {}
+      // Update local UI state immediately
       setActiveOrder(prev => {
         if (!prev) return prev;
         const items = [...(prev.items || [])];
