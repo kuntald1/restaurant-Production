@@ -187,6 +187,7 @@ export default function POS({ onNavigate }) {
   const [tables,     setTables]     = useState([]);
   const [orders,     setOrders]     = useState([]);
   const [activeOrder,setActiveOrder]= useState(null);
+  const activeOrderRef = useRef(null);
   const [menuItems,  setMenuItems]  = useState([]);
   const [categories, setCategories] = useState([]);
   const [kots,       setKots]       = useState([]);
@@ -413,6 +414,9 @@ const loadMenu = useCallback(async () => {
 
   // Keep isOnlineRef in sync with isOnline state
   useEffect(() => { isOnlineRef.current = isOnline; }, [isOnline]);
+
+  // Keep activeOrderRef in sync
+  useEffect(() => { activeOrderRef.current = activeOrder; }, [activeOrder]);
 
   // ── Online/Offline detection + auto-sync ──────────────────
   useEffect(() => {
@@ -726,6 +730,7 @@ const loadMenu = useCallback(async () => {
 
   // ── Add item ─────────────────────────────────────────────
   const addItem = async (menuItem) => {
+    const activeOrder = activeOrderRef.current; // always current
     if (!activeOrder) { showToast('Select or create an order first', 'error'); return; }
     const st = activeOrder.order_status;
     if (st === 'billed' || st === 'cancelled') { showToast('Order is locked', 'error'); return; }
@@ -838,6 +843,7 @@ const loadMenu = useCallback(async () => {
 
   // ── Change quantity ───────────────────────────────────────
   const changeQty = async (item, delta) => {
+    const activeOrder = activeOrderRef.current; // always current
     if (!activeOrder) return;
     const st = activeOrder.order_status;
     if (st === 'billed' || st === 'cancelled') return;
