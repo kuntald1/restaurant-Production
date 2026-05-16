@@ -231,6 +231,26 @@ def add_item_to_order(db: Session, order_id: int, item_data: OrderItemCreate, co
     _assert_items_editable(order)
 
     rounded_price = round(float(item_data.unit_price))
+
+    # Check if same food_menu_id already exists in this order (not cancelled, not in kitchen)
+    existing = db.query(OrderItem).filter(
+        OrderItem.order_id      == order_id,
+        OrderItem.food_menu_id  == item_data.food_menu_id,
+        OrderItem.is_cancelled  == False,
+    ).filter(
+        OrderItem.kot_item_status.in_(['draft', None])
+    ).first()
+
+    if existing and existing.kot_item_status in (None, 'draft'):
+        # Merge — increase quantity of existing item
+        existing.quantity    += item_data.quantity
+        existing.total_price  = rounded_price * existing.quantity
+        db.commit()
+        db.refresh(existing)
+        _recalculate_order_totals(db, order)
+        return existing
+
+    # Create new row (different item or already in KOT)
     item = OrderItem(
         order_id          = order_id,
         company_unique_id = company_id,
