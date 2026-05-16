@@ -233,12 +233,12 @@ def add_item_to_order(db: Session, order_id: int, item_data: OrderItemCreate, co
     rounded_price = round(float(item_data.unit_price))
 
     # Check if same food_menu_id already exists in this order (not cancelled, not in kitchen)
-    # Check if same item exists with NULL kot_item_status (not yet sent to kitchen)
+    # Check if same item exists not yet assigned to a KOT (kot_id is NULL = not sent to kitchen yet)
     existing = db.query(OrderItem).filter(
         OrderItem.order_id      == order_id,
         OrderItem.food_menu_id  == item_data.food_menu_id,
         OrderItem.is_cancelled  == False,
-        OrderItem.kot_item_status.is_(None),
+        OrderItem.kot_id.is_(None),  # not yet sent to kitchen
     ).first()
 
     if existing:
