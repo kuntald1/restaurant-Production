@@ -175,6 +175,7 @@ export default function InvConsumptionWaste() {
         ...form, company_unique_id: cid,
         yield_qty: parseFloat(form.yield_qty || 1),
         yield_uom_id: form.yield_uom_id ? parseInt(form.yield_uom_id) : null,
+        food_menu_id: form.food_menu_id ? parseInt(form.food_menu_id) : null,
         preparation_time: form.preparation_time ? parseInt(form.preparation_time) : null,
         created_by: user?.username,
         ingredients: lines.filter(l => l.item_id && l.qty).map(l => ({
