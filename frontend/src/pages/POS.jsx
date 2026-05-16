@@ -357,11 +357,21 @@ const loadMenu = useCallback(async () => {
             baseItems = baseItems.filter(i => !deletedIds.includes(i.food_menu_id));
           }
 
-          // Add items added offline
+          // Add items added OFFLINE only (not items that existed before going offline)
           cachedItems.forEach(ci => {
-            const ex = baseItems.find(i => i.food_menu_id === ci.food_menu_id);
-            if (ex) { ex.quantity = Math.max(ex.quantity, ci.quantity); }
-            else { baseItems.push(ci); }
+            // Only add if this item doesn't already exist in server items
+            const serverItem = baseItems.find(i => 
+              i.food_menu_id === ci.food_menu_id && 
+              !String(i.order_item_id || '').startsWith('OFFLINE_')
+            );
+            if (serverItem) {
+              // Item exists on server — don't duplicate, just update qty if offline qty is higher
+              // Actually don't touch it — server has the truth for existing items
+            } else {
+              // Truly offline-added item — add it
+              const ex = baseItems.find(i => i.food_menu_id === ci.food_menu_id);
+              if (!ex) baseItems.push(ci);
+            }
           });
 
           fallbackOrder = { ...fallbackOrder, items: baseItems };
@@ -618,10 +628,10 @@ const loadMenu = useCallback(async () => {
     }
     // Clear sync status when done
     const remaining = updatePendingCount();
-    setSyncStatus(prev => ({ ...prev, remaining, syncing: remaining > 0 }));
+    setSyncStatus({ total: 0, remaining: 0, syncing: false }); // always hide bar when done
     if (remaining === 0) {
       setShowSyncedMsg(true);
-      setTimeout(() => setShowSyncedMsg(false), 4000); // auto-hide after 4 seconds
+      setTimeout(() => setShowSyncedMsg(false), 4000);
     }
   };
 
@@ -764,6 +774,15 @@ const loadMenu = useCallback(async () => {
     }
 
     try {
+      // Optimistic update — show item immediately
+      setActiveOrder(prev => {
+        if (!prev) return prev;
+        const items = prev.items ? prev.items.map(i => ({...i})) : [];
+        const ex = items.find(i => i.food_menu_id === menuItem.food_menu_id && !i.is_cancelled);
+        if (ex) { ex.quantity = (ex.quantity || 1) + 1; }
+        else { items.push({ food_menu_id: menuItem.food_menu_id, item_name: menuItem.name, item_code: menuItem.code || '', unit_price: Math.round(parseFloat(menuItem.sale_price || 0)), quantity: 1, is_veg: menuItem.is_veg !== false, is_cancelled: false, order_item_id: `OPT_${Date.now()}` }); }
+        return { ...prev, items };
+      });
       await posOrderAPI.addItem(activeOrder.order_id, cid, {
         food_menu_id:  menuItem.food_menu_id,
         item_name:     menuItem.name,
@@ -773,6 +792,7 @@ const loadMenu = useCallback(async () => {
         quantity:      1,
         is_veg:        menuItem.is_veg !== false,
       });
+      // Reload to get server-assigned order_item_ids
       await loadOrderDetail(activeOrder.order_id);
       await loadOrders();
     } catch (e) { showToast(e.message, 'error'); }
