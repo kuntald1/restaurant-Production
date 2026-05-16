@@ -595,7 +595,8 @@ def _deduct_inventory_for_bill(db, order, company_id: int):
 
                 # Deduct from stock — allows negative (Approach 1)
                 try:
-                    _adjust_balance(db, company_id, node_id, ing.item_id, -deduct_qty)
+                    from decimal import Decimal as _Dec
+                    _adjust_balance(db, company_id, node_id, ing.item_id, -_Dec(str(deduct_qty)))
                 except Exception as e:
                     logger.warning(f"Stock adjust failed for item {ing.item_id}: {e}")
 
