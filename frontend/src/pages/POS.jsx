@@ -420,28 +420,34 @@ const loadMenu = useCallback(async () => {
     };
 
     const goOffline = () => { setIsOnline(false); updatePendingCount(); };
+    let syncInProgress = false;
     const goOnline  = async () => {
+      if (syncInProgress) return; // prevent duplicate sync
       const reallyOnline = await checkRealConnectivity();
       if (!reallyOnline) { goOffline(); return; }
       setIsOnline(true);
       const count = updatePendingCount();
-      if (count > 0) {
-        setSyncStatus({ total: count, remaining: count, syncing: count > 0 });
+      if (count > 0 && !syncInProgress) {
+        syncInProgress = true;
+        setSyncStatus({ total: count, remaining: count, syncing: true });
         setShowSyncedMsg(false);
+        await syncOfflineOrders();
+        syncInProgress = false;
       }
-      syncOfflineOrders();
     };
 
     // Poll every 2 seconds for fast offline detection
+    let wasOnline = true;
     const poll = setInterval(async () => {
       const reallyOnline = await checkRealConnectivity();
-      setIsOnline(prev => {
-        if (prev !== reallyOnline) {
-          if (reallyOnline) goOnline();
-          else goOffline();
-        }
-        return reallyOnline;
-      });
+      setIsOnline(reallyOnline);
+      if (reallyOnline && !wasOnline) {
+        // Just came back online — trigger sync once
+        goOnline();
+      } else if (!reallyOnline && wasOnline) {
+        goOffline();
+      }
+      wasOnline = reallyOnline;
     }, 2000);
 
     // Browser offline event — fires instantly, no need to verify
@@ -866,6 +872,14 @@ const loadMenu = useCallback(async () => {
           // Also remove from pending additions if it was added offline
           const addIdx = pendingItems.findIndex(i => i.order_id === activeOrder.order_id && i.food_menu_id === item.food_menu_id);
           if (addIdx !== -1) pendingItems.splice(addIdx, 1);
+          // Save qty change to per-order cache
+          try {
+            const orderKey = `rms_offline_order_items_${activeOrder.order_id}`;
+            const cachedItems = JSON.parse(localStorage.getItem(orderKey) || '[]');
+            const ex = cachedItems.find(i => i.food_menu_id === item.food_menu_id);
+            if (ex) { ex.quantity = Math.max(0, (ex.quantity || 1) + delta); }
+            localStorage.setItem(orderKey, JSON.stringify(cachedItems.filter(i => i.quantity > 0)));
+          } catch {}
           // Save deleted food_menu_id to per-order cache so switching orders preserves deletion
           try {
             const delCacheKey = `rms_offline_order_deleted_${activeOrder.order_id}`;
@@ -1525,9 +1539,16 @@ ${company.hsn ? `<div class="center muted" style="margin-top:4px">HSN: ${company
   };
 
   // ── Computed ──────────────────────────────────────────────
-  const activeItems  = isOfflineOrder
+  const activeItems  = (isOfflineOrder
     ? (activeOrder?.items || [])
-    : (activeOrder?.items || []).filter(i => !i.is_cancelled);
+    : (activeOrder?.items || []).filter(i => !i.is_cancelled)
+  ).sort((a, b) => {
+    const aId = Number(a.order_item_id) || 0;
+    const bId = Number(b.order_item_id) || 0;
+    if (!aId) return 1;  // offline items at end
+    if (!bId) return -1;
+    return aId - bId;    // stable insertion order
+  });
   const subtotal     = activeItems.reduce((s, i) => s + parseFloat(i.unit_price || i.sale_price || 0) * i.quantity, 0);
   // Surcharge: from order snapshot, or from the selected table
   const surcharge = parseFloat(
