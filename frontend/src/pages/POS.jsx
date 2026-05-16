@@ -260,6 +260,7 @@ export default function POS({ onNavigate }) {
 
   // ── Offline state ─────────────────────────────────────────
   const [isOnline,             setIsOnline]             = useState(true);
+  const isOnlineRef = useRef(true); // ref so closures always see current value
   const [connectivityReady,    setConnectivityReady]    = useState(false); // hide banner until first check done
   const [isOfflineOrder,       setIsOfflineOrder]       = useState(false);
   const [showOfflineBillModal, setShowOfflineBillModal] = useState(false);
@@ -410,6 +411,9 @@ const loadMenu = useCallback(async () => {
     } catch { return 0; }
   };
 
+  // Keep isOnlineRef in sync with isOnline state
+  useEffect(() => { isOnlineRef.current = isOnline; }, [isOnline]);
+
   // ── Online/Offline detection + auto-sync ──────────────────
   useEffect(() => {
     let currentlyOnline = navigator.onLine;
@@ -423,9 +427,10 @@ const loadMenu = useCallback(async () => {
     };
 
     const handleGoOffline = () => {
-      if (!currentlyOnline) return; // already offline
+      if (!currentlyOnline) return;
       currentlyOnline = false;
       syncDone = false;
+      isOnlineRef.current = false;
       setIsOnline(false);
       updatePendingCount();
     };
@@ -435,6 +440,7 @@ const loadMenu = useCallback(async () => {
       const ok = await checkHealth();
       if (!ok) return; // not really online yet
       currentlyOnline = true;
+      isOnlineRef.current = true;
       setIsOnline(true);
       if (!syncDone) {
         syncDone = true;
@@ -443,6 +449,10 @@ const loadMenu = useCallback(async () => {
           setSyncStatus({ total: count, remaining: count, syncing: true });
           setShowSyncedMsg(false);
           await syncOfflineOrders();
+        } else {
+          // Nothing to sync — ensure banners are hidden
+          setSyncStatus({ total: 0, remaining: 0, syncing: false });
+          setShowSyncedMsg(false);
         }
       }
     };
@@ -638,14 +648,9 @@ const loadMenu = useCallback(async () => {
     }
     // Clear sync status when done
     const remaining = updatePendingCount();
-    // Hide sync bar after short delay to show 100%
-    setTimeout(() => {
-      setSyncStatus({ total: 0, remaining: 0, syncing: false });
-    }, 1500);
-    if (remaining === 0) {
-      setShowSyncedMsg(true);
-      setTimeout(() => setShowSyncedMsg(false), 3000);
-    }
+    // Force hide all sync banners
+    setSyncStatus({ total: 0, remaining: 0, syncing: false });
+    setShowSyncedMsg(false);
   };
 
   const refresh = async () => {
@@ -733,7 +738,7 @@ const loadMenu = useCallback(async () => {
     }
 
     // For online orders that are now offline — update local state AND save to pending queue
-    if (!isOnline) {
+    if (!isOnlineRef.current) {
       showToast('📴 Offline — item added, will sync when online', 'info');
       const newItem = {
         order_id:      activeOrder.order_id,
@@ -850,7 +855,7 @@ const loadMenu = useCallback(async () => {
     }
 
     // For online orders that are now offline — update local state AND pending queue
-    if (!isOnline) {
+    if (!isOnlineRef.current) {
       // Save qty change / deletion to pending queue
       try {
         const key = `rms_pending_items_${cid}`;
@@ -1620,7 +1625,7 @@ ${company.hsn ? `<div class="center muted" style="margin-top:4px">HSN: ${company
           display:'flex', alignItems:'center', justifyContent:'center', gap:8,
           boxShadow:'0 2px 8px rgba(0,0,0,0.3)',
         }}>
-          ✅ Back online! Syncing data...
+          ✅ Back online! Syncing {syncStatus.remaining} item{syncStatus.remaining !== 1 ? 's' : ''}...
         </div>
       )}
 
