@@ -1187,7 +1187,11 @@ def get_stock_ledger(db: Session, company_id: int, node_id: int = None,
       UNION ALL
 
       SELECT c.consumption_date AS txn_date, 'Consumption' AS txn_type, 'consumption_out' AS txn_code,
-             c.consumption_id AS txn_id, CONCAT('CON-', c.consumption_id) AS ref_number,
+             c.consumption_id AS txn_id,
+             CASE WHEN c.reference_type = 'pos_order' AND c.notes IS NOT NULL
+                  THEN REGEXP_REPLACE(c.notes, 'Auto-deducted for Order ', '')
+                  ELSE CONCAT('CON-', c.consumption_id)
+             END AS ref_number,
              c.node_id, ci.item_id,
              0::numeric AS qty_in, ci.qty_consumed AS qty_out, ci.unit_cost
       FROM inv_stock_consumption c
