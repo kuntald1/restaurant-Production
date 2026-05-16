@@ -337,6 +337,8 @@ const loadMenu = useCallback(async () => {
       if (order.order_status === 'billed') {
         try { setBill(await posBillAPI.getByOrder(orderId)); } catch { setBill(null); }
       } else { setBill(null); }
+      // Cache full order detail for offline switching
+      try { localStorage.setItem(`rms_order_cache_${orderId}`, JSON.stringify(order)); } catch {}
       // Clear per-order offline cache since we have fresh server data
       try {
         localStorage.removeItem(`rms_offline_order_items_${orderId}`);
@@ -345,6 +347,17 @@ const loadMenu = useCallback(async () => {
     } catch (e) {
       // If offline, use the fallback order data from the running orders list
       if (fallbackOrder) {
+        // Use full order cache if available (has items array)
+        try {
+          const fullCache = localStorage.getItem(`rms_order_cache_${fallbackOrder.order_id}`);
+          if (fullCache) {
+            const cached = JSON.parse(fullCache);
+            if (cached.items && cached.items.length >= 0) {
+              fallbackOrder = cached;
+            }
+          }
+        } catch {}
+
         // Merge offline item additions and filter out offline deletions
         try {
           const orderKey    = `rms_offline_order_items_${fallbackOrder.order_id}`;
