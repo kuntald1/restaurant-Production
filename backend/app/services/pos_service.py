@@ -233,15 +233,12 @@ def add_item_to_order(db: Session, order_id: int, item_data: OrderItemCreate, co
     rounded_price = round(float(item_data.unit_price))
 
     # Check if same food_menu_id already exists in this order (not cancelled, not in kitchen)
-    from sqlalchemy import or_
+    # Check if same item exists with NULL kot_item_status (not yet sent to kitchen)
     existing = db.query(OrderItem).filter(
         OrderItem.order_id      == order_id,
         OrderItem.food_menu_id  == item_data.food_menu_id,
         OrderItem.is_cancelled  == False,
-        or_(
-            OrderItem.kot_item_status == 'draft',
-            OrderItem.kot_item_status.is_(None),
-        )
+        OrderItem.kot_item_status.is_(None),
     ).first()
 
     if existing:
