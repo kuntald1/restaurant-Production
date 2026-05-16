@@ -412,62 +412,51 @@ const loadMenu = useCallback(async () => {
 
   // ── Online/Offline detection + auto-sync ──────────────────
   useEffect(() => {
-    const checkRealConnectivity = async () => {
+    let currentlyOnline = navigator.onLine;
+    let syncDone = false; // only sync once per offline→online transition
+
+    const checkHealth = async () => {
       try {
-        const res = await fetch('/health', { method: 'GET', cache: 'no-store', signal: AbortSignal.timeout(1500) });
+        const res = await fetch('/health', { method: 'GET', cache: 'no-store', signal: AbortSignal.timeout(2000) });
         return res.ok;
       } catch { return false; }
     };
 
-    const goOffline = () => { setIsOnline(false); updatePendingCount(); };
-    let syncInProgress = false;
-    const goOnline  = async () => {
-      if (syncInProgress) return; // prevent duplicate sync
-      const reallyOnline = await checkRealConnectivity();
-      if (!reallyOnline) { goOffline(); return; }
+    const handleGoOffline = () => {
+      if (!currentlyOnline) return; // already offline
+      currentlyOnline = false;
+      syncDone = false;
+      setIsOnline(false);
+      updatePendingCount();
+    };
+
+    const handleGoOnline = async () => {
+      if (currentlyOnline) return; // already online
+      const ok = await checkHealth();
+      if (!ok) return; // not really online yet
+      currentlyOnline = true;
       setIsOnline(true);
-      const count = updatePendingCount();
-      if (count > 0 && !syncInProgress) {
-        syncInProgress = true;
-        setSyncStatus({ total: count, remaining: count, syncing: true });
-        setShowSyncedMsg(false);
-        await syncOfflineOrders();
-        syncInProgress = false;
+      if (!syncDone) {
+        syncDone = true;
+        const count = updatePendingCount();
+        if (count > 0) {
+          setSyncStatus({ total: count, remaining: count, syncing: true });
+          setShowSyncedMsg(false);
+          await syncOfflineOrders();
+        }
       }
     };
 
-    // Poll every 3 seconds — debounce online/offline transitions
-    let wasOnline = true;
-    let consecutiveOnline = 0;
-    let consecutiveOffline = 0;
-    const THRESHOLD = 2; // need 2 consecutive checks before switching state
-
+    // Simple poll — only checks health, state changes handled above
     const poll = setInterval(async () => {
-      const reallyOnline = await checkRealConnectivity();
-      if (reallyOnline) {
-        consecutiveOnline++;
-        consecutiveOffline = 0;
-        if (consecutiveOnline >= THRESHOLD && !wasOnline) {
-          wasOnline = true;
-          goOnline();
-        } else if (consecutiveOnline >= THRESHOLD) {
-          setIsOnline(true);
-        }
-      } else {
-        consecutiveOffline++;
-        consecutiveOnline = 0;
-        if (consecutiveOffline >= THRESHOLD && wasOnline) {
-          wasOnline = false;
-          goOffline();
-        } else if (consecutiveOffline >= THRESHOLD) {
-          setIsOnline(false);
-        }
-      }
-    }, 3000);
+      const ok = await checkHealth();
+      if (!ok && currentlyOnline)  handleGoOffline();
+      if (ok  && !currentlyOnline) handleGoOnline();
+    }, 4000);
 
-    // Browser offline event — fires instantly, reliable
-    const onBrowserOffline = () => { consecutiveOffline = THRESHOLD; consecutiveOnline = 0; goOffline(); };
-    const onBrowserOnline  = () => goOnline();
+    // Browser events fire instantly
+    const onBrowserOffline = () => handleGoOffline();
+    const onBrowserOnline  = () => handleGoOnline();
 
     window.addEventListener('offline', onBrowserOffline);
     window.addEventListener('online',  onBrowserOnline);
