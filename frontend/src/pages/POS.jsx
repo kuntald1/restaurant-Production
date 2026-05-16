@@ -338,19 +338,28 @@ const loadMenu = useCallback(async () => {
     } catch (e) {
       // If offline, use the fallback order data from the running orders list
       if (fallbackOrder) {
-        // Merge any offline-added items from per-order cache
+        // Merge offline item additions and filter out offline deletions
         try {
-          const orderKey = `rms_offline_order_items_${fallbackOrder.order_id}`;
-          const cachedItems = JSON.parse(localStorage.getItem(orderKey) || '[]');
-          if (cachedItems.length > 0) {
-            const baseItems = [...(fallbackOrder.items || [])];
-            cachedItems.forEach(ci => {
-              const ex = baseItems.find(i => i.food_menu_id === ci.food_menu_id);
-              if (ex) { ex.quantity = Math.max(ex.quantity, ci.quantity); }
-              else { baseItems.push(ci); }
-            });
-            fallbackOrder = { ...fallbackOrder, items: baseItems };
+          const orderKey    = `rms_offline_order_items_${fallbackOrder.order_id}`;
+          const delCacheKey = `rms_offline_order_deleted_${fallbackOrder.order_id}`;
+          const cachedItems  = JSON.parse(localStorage.getItem(orderKey)    || '[]');
+          const deletedIds   = JSON.parse(localStorage.getItem(delCacheKey) || '[]');
+
+          let baseItems = [...(fallbackOrder.items || [])];
+
+          // Remove items deleted offline
+          if (deletedIds.length > 0) {
+            baseItems = baseItems.filter(i => !deletedIds.includes(i.food_menu_id));
           }
+
+          // Add items added offline
+          cachedItems.forEach(ci => {
+            const ex = baseItems.find(i => i.food_menu_id === ci.food_menu_id);
+            if (ex) { ex.quantity = Math.max(ex.quantity, ci.quantity); }
+            else { baseItems.push(ci); }
+          });
+
+          fallbackOrder = { ...fallbackOrder, items: baseItems };
         } catch {}
         setActiveOrder(fallbackOrder);
         setIsOfflineOrder(false);
@@ -590,7 +599,10 @@ const loadMenu = useCallback(async () => {
 
         markOfflineOrderSynced(order.offline_id);
         // Clear per-order offline cache after sync
-        try { localStorage.removeItem(`rms_offline_order_items_${serverOrder?.order_id}`); } catch {}
+        try {
+          localStorage.removeItem(`rms_offline_order_items_${serverOrder?.order_id}`);
+          localStorage.removeItem(`rms_offline_order_deleted_${serverOrder?.order_id}`);
+        } catch {}
         synced++;
       } catch(e) { console.error('Sync failed:', order.offline_id, e); }
     }
@@ -822,6 +834,18 @@ const loadMenu = useCallback(async () => {
           // Also remove from pending additions if it was added offline
           const addIdx = pendingItems.findIndex(i => i.order_id === activeOrder.order_id && i.food_menu_id === item.food_menu_id);
           if (addIdx !== -1) pendingItems.splice(addIdx, 1);
+          // Save deleted food_menu_id to per-order cache so switching orders preserves deletion
+          try {
+            const delCacheKey = `rms_offline_order_deleted_${activeOrder.order_id}`;
+            const deletedIds = JSON.parse(localStorage.getItem(delCacheKey) || '[]');
+            if (!deletedIds.includes(item.food_menu_id)) deletedIds.push(item.food_menu_id);
+            localStorage.setItem(delCacheKey, JSON.stringify(deletedIds));
+            // Also remove from per-order items cache if it was added offline
+            const orderKey = `rms_offline_order_items_${activeOrder.order_id}`;
+            const cachedItems = JSON.parse(localStorage.getItem(orderKey) || '[]');
+            const filteredItems = cachedItems.filter(i => i.food_menu_id !== item.food_menu_id);
+            localStorage.setItem(orderKey, JSON.stringify(filteredItems));
+          } catch {}
         } else {
           // Qty change — track as update
           const ex = pendingItems.find(i => i.order_id === activeOrder.order_id && i.food_menu_id === item.food_menu_id);
