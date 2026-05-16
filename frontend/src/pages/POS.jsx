@@ -318,7 +318,7 @@ const loadMenu = useCallback(async () => {
     if (cached.length > 0) {
       setMenuItems(cached);
       setCategories([{ id: 'All', name: 'All' }, ...cachedCats.map(c => ({ id: c.food_category_id, name: c.category_name }))]);
-      showToast('📴 Showing cached menu (offline)', 'warning');
+      showToast('📴 Offline mode — showing cached menu', 'error');
     }
   }
 }, [cid]);
@@ -370,7 +370,7 @@ const loadMenu = useCallback(async () => {
         setIsOfflineOrder(false);
         setKots([]);
         setBill(null);
-        showToast('📴 Showing cached order data (offline)', 'warning');
+        showToast('📴 Offline mode — showing cached order data', 'error');
       } else {
         showToast('📴 Cannot load order details while offline', 'error');
       }
@@ -741,10 +741,23 @@ const loadMenu = useCallback(async () => {
       // Update local UI state immediately
       setActiveOrder(prev => {
         if (!prev) return prev;
-        const items = [...(prev.items || [])];
-        const ex = items.find(i => i.food_menu_id === menuItem.food_menu_id);
-        if (ex) { ex.quantity += 1; }
-        else { items.push({ food_menu_id: menuItem.food_menu_id, item_name: menuItem.name, item_code: menuItem.code || '', unit_price: Math.round(parseFloat(menuItem.sale_price || 0)), quantity: 1, is_veg: menuItem.is_veg !== false, is_cancelled: false, order_item_id: Date.now() }); }
+        const items = prev.items ? prev.items.map(i => ({...i})) : [];
+        const ex = items.find(i => i.food_menu_id === menuItem.food_menu_id && !i.is_cancelled);
+        if (ex) {
+          ex.quantity = (ex.quantity || 1) + 1;
+        } else {
+          items.push({
+            food_menu_id:    menuItem.food_menu_id,
+            item_name:       menuItem.name,
+            item_code:       menuItem.code || '',
+            unit_price:      Math.round(parseFloat(menuItem.sale_price || 0)),
+            quantity:        1,
+            is_veg:          menuItem.is_veg !== false,
+            is_cancelled:    false,
+            order_item_id:   `OFFLINE_${menuItem.food_menu_id}_${Date.now()}`,
+            kot_item_status: null,  // will show yellow highlight
+          });
+        }
         return { ...prev, items };
       });
       return;
@@ -1758,9 +1771,11 @@ ${company.hsn ? `<div class="center muted" style="margin-top:4px">HSN: ${company
                   <div style={{ padding: 32, textAlign: 'center', color: 'var(--text-3)', fontSize: 13 }}>Add items from the menu →</div>
                 )}
                 {activeItems.map(item => {
+                  const isOfflineAdded = !item.order_item_id || String(item.order_item_id).length > 10;
                   const kotColor = item.kot_item_status === 'kot_inprocess' ? '#dbeafe'
                     : item.kot_item_status === 'ready' ? '#d1fae5'
                     : item.kot_item_status === 'kot_open' ? '#fef9c3'
+                    : isOfflineAdded ? '#fef9c3'  // yellow for offline-added items
                     : 'transparent';
                   return (
                     <div key={item.order_item_id} style={{ borderBottom: '1px solid var(--border-light)', background: kotColor }}>
