@@ -661,7 +661,49 @@ const loadMenu = useCallback(async () => {
     let synced = 0;
     for (const order of pending) {
       try {
-        // Step 1 — Create order on server
+        // Check if this is an existing online order edited offline
+        if (order.is_online_order && order.order_id) {
+          // Just sync item changes to the existing server order
+          const existingItems = await posOrderAPI.getById(order.order_id).catch(() => null);
+          if (existingItems) {
+            const serverItems = (existingItems.items || []).filter(i => !i.is_cancelled);
+            // For each item in offline version, update qty on server
+            for (const item of order.items || []) {
+              const serverItem = serverItems.find(si => si.food_menu_id === item.food_menu_id);
+              if (serverItem) {
+                // Update qty if changed
+                if (serverItem.quantity !== item.quantity) {
+                  await posOrderAPI.updateQty(order.order_id, serverItem.order_item_id, item.quantity).catch(() => {});
+                }
+              } else if (!item.order_item_id || String(item.order_item_id).startsWith('OFFLINE_')) {
+                // New item added offline — add to server
+                await posOrderAPI.addItem(order.order_id, order.company_unique_id, {
+                  food_menu_id:  item.food_menu_id,
+                  item_name:     item.item_name,
+                  item_code:     item.item_code || '',
+                  category_name: item.category_name || '',
+                  unit_price:    item.unit_price,
+                  quantity:      item.quantity,
+                  is_veg:        item.is_veg !== false,
+                }).catch(() => {});
+              }
+            }
+            // Delete items removed offline
+            for (const si of serverItems) {
+              const stillExists = order.items.find(i => i.food_menu_id === si.food_menu_id);
+              if (!stillExists) {
+                await posOrderAPI.updateQty(order.order_id, si.order_item_id, 0).catch(() => {});
+              }
+            }
+          }
+          markOfflineOrderSynced(order.offline_id);
+          deleteOfflineOrder(order.offline_id);
+          synced++;
+          loadOrders();
+          continue; // skip normal create flow
+        }
+
+        // Step 1 — Create new order on server (truly offline orders)
         const serverOrder = await posOrderAPI.create({
           company_unique_id: order.company_unique_id,
           order_type:        order.order_type,
