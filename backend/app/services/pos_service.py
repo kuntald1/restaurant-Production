@@ -640,7 +640,7 @@ def _deduct_inventory_for_bill(db, order, company_id: int):
                 "nid":    node_id,
                 "dt":     _date.today(),
                 "ref_id": order.order_id,
-                "notes":  f"Auto-deducted for Order #{order.order_number}",
+                "notes":  f"Auto-deducted for Order {order.order_number}",
             }).fetchone()
 
             if cons_result:
