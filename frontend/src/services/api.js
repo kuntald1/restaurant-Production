@@ -234,6 +234,8 @@ export const invNodeAPI = {
   update:      (id, data)  => request('PUT', `/inventory/node/${id}`, data),
   delete:      (id)        => request('DELETE', `/inventory/node/${id}`),
   getBranches: (companyId) => request('GET', `/inventory/branches/${companyId}`),
+  getDeductionNode: (companyId)         => request('GET', `/inventory/deduction-node/${companyId}`),
+  setDeductionNode: (companyId, nodeId) => request('PUT', `/inventory/deduction-node/${companyId}`, { deduction_node_id: nodeId }),
 };
 
 // ── Stock Balance ─────────────────────────────────────────────

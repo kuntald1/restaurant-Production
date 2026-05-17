@@ -88,6 +88,11 @@ class Company(Base):
     sgst = Column(Numeric(5, 2), default=0, nullable=True)
     cgst = Column(Numeric(5, 2), default=0, nullable=True)
 
+    # ── Inventory deduction node mapping ────────────────────────
+    # Which inv_node.node_id to deduct from when a POS bill is generated
+    # If NULL, falls back to company_unique_id (legacy behaviour)
+    deduction_node_id = Column(Integer, nullable=True)
+
 
 class CompanyPaymentQR(Base):
     __tablename__ = "company_payment_qr"

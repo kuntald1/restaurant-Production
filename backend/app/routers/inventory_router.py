@@ -613,3 +613,33 @@ def get_stock_ledger(
     fd = date.fromisoformat(from_date) if from_date else None
     td = date.fromisoformat(to_date)   if to_date   else None
     return svc.get_stock_ledger(db, company_id, node_id, item_id, fd, td)
+
+
+# ── Deduction Node Mapping ────────────────────────────────────────────────────
+
+@router.get("/deduction-node/{company_id}")
+def get_deduction_node(company_id: int, db: Session = Depends(get_db)):
+    """Get the current deduction_node_id for a company."""
+    from sqlalchemy import text
+    row = db.execute(
+        text("SELECT deduction_node_id FROM company WHERE company_unique_id = :cid"),
+        {"cid": company_id}
+    ).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Company not found")
+    return {"company_unique_id": company_id, "deduction_node_id": row[0]}
+
+
+@router.put("/deduction-node/{company_id}")
+def set_deduction_node(company_id: int, payload: dict, db: Session = Depends(get_db)):
+    """Set the deduction_node_id for a company.
+    Body: { "deduction_node_id": <int or null> }
+    """
+    from sqlalchemy import text
+    node_id = payload.get("deduction_node_id")  # may be None to reset
+    db.execute(
+        text("UPDATE company SET deduction_node_id = :nid WHERE company_unique_id = :cid"),
+        {"nid": node_id, "cid": company_id}
+    )
+    db.commit()
+    return {"company_unique_id": company_id, "deduction_node_id": node_id}
