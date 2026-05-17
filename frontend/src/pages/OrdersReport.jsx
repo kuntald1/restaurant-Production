@@ -50,8 +50,16 @@ export default function OrdersReport() {
   const children  = companies.filter(c =>  c.parant_company_unique_id);
   const tree      = parents.map(p => ({ ...p, children: children.filter(c => c.parant_company_unique_id === p.company_unique_id) }));
 
+  // For child branch: resolve root company so orders are fetched correctly
+  const myCompany     = allCo.find(c => c.company_unique_id === userCid);
+  const myParentId    = myCompany?.parant_company_unique_id;
+  const isChildBranch = !!myParentId && Number(myParentId) !== 0;
+  const rootCid       = isChildBranch ? Number(myParentId) : userCid;
+
   const scopeIds = companyId === 'all'
-    ? companies.map(c => c.company_unique_id)
+    ? isChildBranch
+      ? [userCid]  // child branch sees only own orders
+      : companies.map(c => c.company_unique_id)
     : [parseInt(companyId), ...children.filter(c => c.parant_company_unique_id === parseInt(companyId)).map(c => c.company_unique_id)];
 
   // Scan ALL orders in batches of 5 — stops after 5 consecutive misses
@@ -88,7 +96,9 @@ export default function OrdersReport() {
     setLoading(true); setOrders([]);
     const all = [];
     const seen = new Set();
-    const cids = companyId === 'all' ? (allCompanies||[]).map(c=>c.company_unique_id) : scopeIds;
+    const cids = companyId === 'all'
+      ? isChildBranch ? [userCid] : (allCompanies||[]).map(c=>c.company_unique_id)
+      : scopeIds;
     for (const cid of cids) {
       try {
         const running = await posOrderAPI.getRunning(cid);

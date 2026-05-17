@@ -37,6 +37,13 @@ export default function SalesReport() {
       );
   const tree = buildTree(visibleCompanies);
 
+  // For child branch users: resolve root company for bill fetching
+  const myCompany   = (allCompanies || []).find(c => c.company_unique_id === userCid);
+  const myParentId  = myCompany?.parant_company_unique_id;
+  const isChildBranch = !!myParentId && Number(myParentId) !== 0;
+  // rootCid: the top-level parent whose /bill/company endpoint returns all branch bills
+  const rootCid = isChildBranch ? Number(myParentId) : userCid;
+
   const companiesInScope = companyId === 'all'
     ? visibleCompanies
     : visibleCompanies.filter(c =>
@@ -60,11 +67,13 @@ export default function SalesReport() {
 
     try {
       const parentIds = companyId === 'all'
-        ? [...new Set(
-            visibleCompanies
-              .filter(c => !c.parant_company_unique_id)
-              .map(c => c.company_unique_id)
-          )]
+        ? isChildBranch
+          ? [rootCid]  // child branch: fetch from root (returns all branch bills)
+          : [...new Set(
+              visibleCompanies
+                .filter(c => !c.parant_company_unique_id)
+                .map(c => c.company_unique_id)
+            )]
         : [parseInt(companyId)];
 
       const allBills = [];
