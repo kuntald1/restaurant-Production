@@ -181,8 +181,13 @@ function CustomerPanel({ cid, order, companySettings, onPhoneChange, onCustomerF
 const roundHalfUp = (n) => Math.floor(Number(n) + 0.5);
 
 export default function POS({ onNavigate }) {
-  const { selectedCompany, showToast, user, companySettings } = useApp();
+  const { selectedCompany, showToast, user, companySettings, allCompanies } = useApp();
   const cid = selectedCompany?.company_unique_id;
+
+  // rootCid: food menu & categories are stored under the root parent company
+  const myParentId    = selectedCompany?.parant_company_unique_id;
+  const isChildBranch = !!myParentId && Number(myParentId) !== 0;
+  const rootCid       = isChildBranch ? myParentId : cid;
 
   // ── State ─────────────────────────────────────────────────
   const [tables,     setTables]     = useState([]);
@@ -304,9 +309,11 @@ const loadTables = useCallback(async () => {
 const loadMenu = useCallback(async () => {
   if (!cid) return;
   try {
+    const menuCid = rootCid || cid; // menu items stored under root parent company
+    if (!menuCid) return;
     const [items, cats] = await Promise.all([
-      foodMenuAPI.getAll(cid),
-      foodCategoryAPI.getAll(cid),
+      foodMenuAPI.getAll(menuCid),
+      foodCategoryAPI.getAll(menuCid),
     ]);
     const filtered = (items || []).filter(i => i.IsActive && i.is_available);
     setMenuItems(filtered);
@@ -324,7 +331,7 @@ const loadMenu = useCallback(async () => {
       showToast('📴 Offline mode — showing cached menu', 'error');
     }
   }
-}, [cid]);
+}, [cid, rootCid]);
 
   const loadOrderDetail = useCallback(async (orderId, fallbackOrder = null) => {
     try {
@@ -422,7 +429,7 @@ const loadMenu = useCallback(async () => {
       .then(r => { setIsOnline(r.ok); })
       .catch(() => { setIsOnline(false); })
       .finally(() => { setConnectivityReady(true); });
-  }, [cid]);
+  }, [cid, rootCid]);
 
   // ── Track pending sync count ─────────────────────────────
   const updatePendingCount = () => {
