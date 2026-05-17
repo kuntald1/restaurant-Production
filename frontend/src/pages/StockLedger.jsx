@@ -269,10 +269,11 @@ export default function StockLedger() {
     if (!cid) return;
     setLoading(true);
     try {
-      const api     = rootCid || cid;
+      // Ledger uses own cid — transactions (consumption, GRN, transfers) are stored under own company
+      // For child branch: also fetch parent's transactions (transfers come from parent)
       const nodeInt = filterNode ? parseInt(String(filterNode).replace('b_','')) : null;
       const itemInt = filterItem ? parseInt(filterItem) : null;
-      const data    = await invLedgerAPI.get(api, { node_id: nodeInt, item_id: itemInt, from_date: fromDate, to_date: toDate });
+      const data    = await invLedgerAPI.get(cid, { node_id: nodeInt, item_id: itemInt, from_date: fromDate, to_date: toDate });
       setLedger(data || []);
     } catch (e) { setLedger([]); }
     setLoading(false);
@@ -280,7 +281,7 @@ export default function StockLedger() {
 
   useEffect(() => {
     if (!cid) return;
-    const api = rootCid || cid;
+    const api = rootCid || cid;  // items/categories from root company
     Promise.allSettled([invItemAPI.getAll(api), invCategoryAPI.getAll(api)]).then(([it, ca]) => {
       setItems(it.status === 'fulfilled' ? it.value || [] : []);
       setCategories(ca.status === 'fulfilled' ? ca.value || [] : []);
