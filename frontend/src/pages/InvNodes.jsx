@@ -36,6 +36,12 @@ export default function InvNodes() {
   const [loadingStock, setLoadingStock] = useState(false);
   const [tab,          setTab]          = useState('wh'); // 'wh' | 'branches'
 
+  // Deduction node mapping
+  const [deductModal,      setDeductModal]      = useState(null); // branch row being configured
+  const [deductNodeId,     setDeductNodeId]     = useState('');   // selected node_id
+  const [deductSaving,     setDeductSaving]     = useState(false);
+  const [deductCurrentMap, setDeductCurrentMap] = useState({});   // { company_id: node_id }
+
   // All nodes including branches from company table
   const { nodes: allNodes, loadingNodes } = useInventoryNodes(cid, selectedCompany);
 
@@ -58,6 +64,10 @@ export default function InvNodes() {
   };
 
   useEffect(() => { load(); }, [cid]);
+
+  useEffect(() => {
+    if (branchNodes.length > 0) loadDeductionMaps(branchNodes);
+  }, [branchNodes.length, cid]);
 
   const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }));
 
@@ -103,6 +113,42 @@ export default function InvNodes() {
   };
 
   const getItemName = (id) => items.find(i => i.item_id === id)?.item_name || `Item #${id}`;
+
+  // Load deduction node mappings for all visible branches
+  const loadDeductionMaps = async (branches) => {
+    const results = await Promise.allSettled(
+      branches.map(b => invNodeAPI.getDeductionNode(nodeIdToInt(b.node_id)))
+    );
+    const map = {};
+    results.forEach((r, i) => {
+      if (r.status === 'fulfilled') {
+        const cid = nodeIdToInt(branches[i].node_id);
+        map[cid] = r.value?.deduction_node_id ?? null;
+      }
+    });
+    setDeductCurrentMap(map);
+  };
+
+  const openDeductModal = (branchNode) => {
+    const cid = nodeIdToInt(branchNode.node_id);
+    setDeductModal(branchNode);
+    setDeductNodeId(deductCurrentMap[cid] !== undefined && deductCurrentMap[cid] !== null
+      ? String(deductCurrentMap[cid]) : '');
+  };
+
+  const saveDeductNode = async () => {
+    if (!deductModal) return;
+    setDeductSaving(true);
+    try {
+      const cid = nodeIdToInt(deductModal.node_id);
+      const nid = deductNodeId !== '' ? parseInt(deductNodeId) : null;
+      await invNodeAPI.setDeductionNode(cid, nid);
+      setDeductCurrentMap(m => ({ ...m, [cid]: nid }));
+      showToast('Deduction node saved!');
+      setDeductModal(null);
+    } catch (err) { showToast(err.message, 'error'); }
+    setDeductSaving(false);
+  };
 
   // Summary counts
   const warehouseCount   = whCkNodes.filter(n => n.node_type === 'warehouse').length;
@@ -179,7 +225,7 @@ export default function InvNodes() {
         loadingNodes ? <Spinner /> : (
           <div>
             <div style={{ background: 'var(--info-bg)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 16px', marginBottom: 16, fontSize: 13, color: 'var(--text-2)' }}>
-              ℹ️ Branches are automatically loaded from your company setup. To add or remove branches, update the Company Management section.
+              ℹ️ Branches are automatically loaded from your company setup. Use <strong>✏️ Map Node</strong> to configure which inventory node each branch deducts from during POS billing.
             </div>
 
             {branchNodes.length === 0
@@ -187,29 +233,42 @@ export default function InvNodes() {
               : (
                 <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius)', overflow: 'hidden' }}>
                   {/* Header */}
-                  <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 12, padding: '10px 16px', background: 'var(--bg)', borderBottom: '1px solid var(--border)', fontSize: 11, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1.5fr 1.5fr', gap: 12, padding: '10px 16px', background: 'var(--bg)', borderBottom: '1px solid var(--border)', fontSize: 11, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase' }}>
                     <span>Branch Name</span>
                     <span>Type</span>
+                    <span>Deducts From</span>
                     <span>Actions</span>
                   </div>
-                  {branchNodes.map((node) => (
-                    <div key={node.node_id} style={{
-                      display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 12,
-                      padding: '12px 16px', borderBottom: '1px solid var(--border)',
-                      paddingLeft: node.depth === 2 ? 40 : 16,
-                      background: node.depth === 2 ? 'var(--bg)' : 'var(--surface)',
-                    }}>
-                      <span style={{ fontWeight: node.depth === 1 ? 600 : 400, fontSize: 13 }}>
-                        {node.node_name}
-                      </span>
-                      <span><Badge variant="success">Branch</Badge></span>
-                      <span>
-                        <button className="btn btn-sm btn-ghost" onClick={() => openStock({ node_id: node.node_id, node_name: node.node_name.replace(/^[🏭☁️🏪📍\u3000\u21b3]\s*/g, '') })}>
-                          📦 Stock
-                        </button>
-                      </span>
-                    </div>
-                  ))}
+                  {branchNodes.map((node) => {
+                    const branchCid = nodeIdToInt(node.node_id);
+                    const mappedNodeId = deductCurrentMap[branchCid];
+                    const mappedNode = mappedNodeId != null ? whCkNodes.find(n => n.node_id === mappedNodeId) : null;
+                    const deductLabel = mappedNode
+                      ? <span style={{ color: 'var(--primary)', fontWeight: 600 }}>🏭 {mappedNode.node_name}</span>
+                      : (mappedNodeId != null
+                          ? <span style={{ color: 'var(--warning)' }}>Node #{mappedNodeId}</span>
+                          : <span style={{ color: 'var(--text-3)', fontStyle: 'italic' }}>Not configured</span>);
+                    return (
+                      <div key={node.node_id} style={{
+                        display: 'grid', gridTemplateColumns: '2fr 1fr 1.5fr 1.5fr', gap: 12,
+                        padding: '12px 16px', borderBottom: '1px solid var(--border)',
+                        paddingLeft: node.depth === 2 ? 40 : 16,
+                        background: node.depth === 2 ? 'var(--bg)' : 'var(--surface)',
+                      }}>
+                        <span style={{ fontWeight: node.depth === 1 ? 600 : 400, fontSize: 13 }}>
+                          {node.node_name}
+                        </span>
+                        <span><Badge variant="success">Branch</Badge></span>
+                        <span style={{ fontSize: 12, display: 'flex', alignItems: 'center' }}>{deductLabel}</span>
+                        <span style={{ display: 'flex', gap: 6 }}>
+                          <button className="btn btn-sm btn-ghost" onClick={() => openDeductModal(node)}>✏️ Map Node</button>
+                          <button className="btn btn-sm btn-ghost" onClick={() => openStock({ node_id: node.node_id, node_name: node.node_name.replace(/^[\u{1F3ED}\u{2601}\uFE0F\u{1F3EA}\u{1F4CD}\u3000\u21b3]\s*/gu, '') })}>
+                            📦 Stock
+                          </button>
+                        </span>
+                      </div>
+                    );
+                  })}
                 </div>
               )
             }
@@ -330,6 +389,35 @@ export default function InvNodes() {
           onConfirm={() => handleDelete(confirm.id)}
           onCancel={() => setConfirm(null)}
         />
+      )}
+
+      {/* ── Deduction Node Mapping Modal ── */}
+      {deductModal && (
+        <Modal title={`🔗 Map Deduction Node — ${deductModal.node_name}`} onClose={() => setDeductModal(null)} size="sm">
+          <div style={{ marginBottom: 16, fontSize: 13, color: 'var(--text-2)', lineHeight: 1.6 }}>
+            When a POS bill is generated at <strong>{deductModal.node_name}</strong>, inventory will be
+            deducted from the node selected below.
+          </div>
+          <FormField label="Deduct inventory from" required>
+            <Select value={deductNodeId} onChange={e => setDeductNodeId(e.target.value)}>
+              <option value="">— Select a node —</option>
+              {whCkNodes.map(n => (
+                <option key={n.node_id} value={n.node_id}>
+                  {n.node_type === 'warehouse' ? '🏭' : '☁️'} {n.node_name}
+                </option>
+              ))}
+            </Select>
+          </FormField>
+          <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 4, marginBottom: 16 }}>
+            Typically this should be the warehouse or cloud kitchen that supplies this branch.
+          </div>
+          <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+            <button className="btn btn-ghost" onClick={() => setDeductModal(null)}>Cancel</button>
+            <button className="btn btn-primary" onClick={saveDeductNode} disabled={deductSaving || !deductNodeId}>
+              {deductSaving ? 'Saving…' : 'Save Mapping'}
+            </button>
+          </div>
+        </Modal>
       )}
     </div>
   );

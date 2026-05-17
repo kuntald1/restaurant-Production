@@ -549,8 +549,12 @@ def _deduct_inventory_for_bill(db, order, company_id: int):
         if not check:
             return  # Inventory module not installed — skip silently
 
-        # Get node_id for this order (branch = company_unique_id used as node_id)
-        node_id = company_id  # branches use their company_unique_id as node_id
+        # Resolve deduction node: prefer company.deduction_node_id, fall back to company_id
+        node_row = db.execute(text(
+            "SELECT deduction_node_id FROM company WHERE company_unique_id = :cid"
+        ), {"cid": company_id}).fetchone()
+        node_id = (node_row.deduction_node_id if node_row and node_row.deduction_node_id
+                   else company_id)
 
         # Check if there are any recipes linked to food menu items
         active_items = [i for i in order.items if not i.is_cancelled]
