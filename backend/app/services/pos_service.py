@@ -566,14 +566,23 @@ def _deduct_inventory_for_bill(db, order, company_id: int):
         if not menu_ids:
             return
 
-        # Find recipes linked to these menu items
+        # Resolve root company — recipes are stored under the parent company (rootCid pattern)
+        # e.g. Dharmatala (cid=3) has parent cid=1, recipes are under cid=1
+        parent_row = db.execute(text(
+            "SELECT parant_company_unique_id FROM company WHERE company_unique_id = :cid"
+        ), {"cid": company_id}).fetchone()
+        root_cid = (parent_row.parant_company_unique_id
+                    if parent_row and parent_row.parant_company_unique_id
+                    else company_id)
+
+        # Find recipes linked to these menu items — search both own cid and root cid
         recipes = db.execute(text(f"""
             SELECT r.recipe_id, r.recipe_name, r.food_menu_id, r.yield_qty
             FROM inv_recipe r
             WHERE r.food_menu_id IN ({','.join(str(m) for m in menu_ids)})
-              AND r.company_unique_id = :cid
+              AND r.company_unique_id IN (:cid, :root_cid)
               AND r.is_active = TRUE
-        """), {"cid": company_id}).fetchall()
+        """), {"cid": company_id, "root_cid": root_cid}).fetchall()
 
         if not recipes:
             return  # No linked recipes — skip
