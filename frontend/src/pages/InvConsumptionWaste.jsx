@@ -77,13 +77,13 @@ export default function InvConsumptionWaste() {
     if (!cid) return;
     setLoading(true);
     try {
-      const apiCid = rootCid || cid;  // items/recipes under root company
+      const apiCid = rootCid || cid;  // items/recipes/menus stored under root company
       const [c, w, r, i, u, sb, fm] = await Promise.allSettled([
-        invConsumptionAPI.getAll(cid), invWasteAPI.getAll(cid), invRecipeAPI.getAll(cid),
+        invConsumptionAPI.getAll(cid), invWasteAPI.getAll(cid), invRecipeAPI.getAll(apiCid),
         invItemAPI.getAll(apiCid), invUomAPI.getAll(apiCid),
         // For child branch: load stock balance to filter items with stock only
         isChildBranch ? invStockAPI.getBalance(apiCid, Number(cid)) : Promise.resolve(null),
-        foodMenuAPI.getAll(cid),
+        foodMenuAPI.getAll(apiCid),
       ]);
       const allItems   = i.status === 'fulfilled' ? (i.value || []) : [];
       const stockData  = sb.status === 'fulfilled' ? (sb.value || []) : [];
@@ -297,7 +297,7 @@ export default function InvConsumptionWaste() {
         action={
           tab === 'consumption' ? <button className="btn btn-primary" onClick={() => { setForm({ node_id: '', consumption_date: today(), notes: '' }); setLines([]); setModal('consumption'); }}>+ Record Consumption</button>
           : tab === 'waste' ? <button className="btn btn-primary" onClick={() => { setForm({ ...EMPTY_WASTE }); setEditId(null); setModal('waste'); }}>+ Record Waste</button>
-          : <button className="btn btn-primary" onClick={() => { setForm({ ...EMPTY_RECIPE }); setLines([]); setEditId(null); setModal('recipe'); }}>+ New Recipe</button>
+          : !isChildBranch ? <button className="btn btn-primary" onClick={() => { setForm({ ...EMPTY_RECIPE }); setLines([]); setEditId(null); setModal('recipe'); }}>+ New Recipe</button> : null
         }
       />
 
@@ -330,11 +330,15 @@ export default function InvConsumptionWaste() {
             <Table columns={recipeCols} data={recipes} actions={(row) => (
               <div style={{ display: 'flex', gap: 6 }}>
                 <button className="btn btn-sm btn-ghost" onClick={() => setViewRecipe(row)}>👁️ View</button>
-                <button className="btn btn-sm btn-ghost" onClick={() => {
-                  setForm({ ...row }); setLines((row.ingredients || []).map(i => ({ item_id: i.item_id || '', qty: i.qty, uom_id: i.uom_id || '', unit_cost: i.unit_cost || '0' })));
-                  setEditId(row.recipe_id); setModal('recipe');
-                }}>✏️</button>
-                <button className="btn btn-sm btn-danger" onClick={() => setConfirm({ id: row.recipe_id, name: row.recipe_name, type: 'recipe' })}>🗑️</button>
+                {!isChildBranch && (
+                  <>
+                    <button className="btn btn-sm btn-ghost" onClick={() => {
+                      setForm({ ...row }); setLines((row.ingredients || []).map(i => ({ item_id: i.item_id || '', qty: i.qty, uom_id: i.uom_id || '', unit_cost: i.unit_cost || '0' })));
+                      setEditId(row.recipe_id); setModal('recipe');
+                    }}>✏️</button>
+                    <button className="btn btn-sm btn-danger" onClick={() => setConfirm({ id: row.recipe_id, name: row.recipe_name, type: 'recipe' })}>🗑️</button>
+                  </>
+                )}
               </div>
             )} />
           )}
