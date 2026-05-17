@@ -72,18 +72,19 @@ export default function OrdersReport() {
     for (let id = 1; id <= 2000 && misses < 5; id += 5) {
       const ids   = [id, id+1, id+2, id+3, id+4];
       const batch = await Promise.allSettled(ids.map(i => posOrderAPI.getById(i)));
-      let hit = false;
+      let anyFound = false; // any order exists at all (regardless of scope filter)
       batch.forEach(r => {
         if (r.status === 'fulfilled' && r.value?.order_id) {
+          anyFound = true;
           const o = r.value;
           if (!seen.has(o.order_id) && (scopeIds.includes(o.company_unique_id) || companyId === 'all')) {
             seen.add(o.order_id);
             all.push(o);
-            hit = true; misses = 0;
           }
         }
       });
-      if (!hit) misses++;
+      // Only count as a miss if NO orders existed in this batch at all
+      if (anyFound) misses = 0; else misses++;
     }
 
     all.sort((a, b) => (b.created_at||'').localeCompare(a.created_at||''));
