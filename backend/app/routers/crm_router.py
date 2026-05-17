@@ -41,7 +41,13 @@ class SmsSettingsIn(BaseModel):
 @router.get("/sms-settings/{company_id}")
 def get_sms_settings(company_id: int, db: Session = Depends(get_db)):
     s = db.query(SmsSettings).filter(SmsSettings.company_unique_id == company_id).first()
-    if not s: raise HTTPException(404, "Not found")
+    if not s:
+        # Return empty defaults instead of 404 — branch companies may not have settings yet
+        return { "id": None, "company_unique_id": company_id, "provider": None,
+                 "account_sid": None, "from_number": None,
+                 "whatsapp_enabled": False, "sms_enabled": False,
+                 "template_bill": "", "template_promo": "",
+                 "template_birthday": "" }
     return { "id": s.id, "company_unique_id": s.company_unique_id, "provider": s.provider,
              "account_sid": s.account_sid, "from_number": s.from_number,
              "whatsapp_enabled": s.whatsapp_enabled, "sms_enabled": s.sms_enabled,
