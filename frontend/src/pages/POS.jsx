@@ -7,6 +7,7 @@ import {
   createOfflineOrder, addItemToOfflineOrder, removeItemFromOfflineOrder,
   markOfflineOrderBilled, printOfflineBill,
   getUnsyncedOfflineOrders, markOfflineOrderSynced,
+  getOfflineOrder, getOfflineOrders, saveOfflineOrders, deleteOfflineOrder,
 } from '../services/offlineStore';
 
 const STATUS_META = {
@@ -347,7 +348,19 @@ const loadMenu = useCallback(async () => {
     } catch (e) {
       // If offline, use the fallback order data from the running orders list
       if (fallbackOrder) {
-        // Use full order cache if available (has items array)
+        // Check offlineStore first (most up-to-date offline state)
+        try {
+          const offlineCopy = getOfflineOrder(`ONLINE-${fallbackOrder.order_id}`);
+          if (offlineCopy && offlineCopy.items) {
+            setActiveOrder({ ...offlineCopy, order_id: fallbackOrder.order_id });
+            setIsOfflineOrder(true);
+            setKots([]);
+            setBill(null);
+            showToast('📴 Offline mode — showing cached order data', 'error');
+            return;
+          }
+        } catch {}
+        // Fall back to full order cache
         try {
           const fullCache = localStorage.getItem(`rms_order_cache_${fallbackOrder.order_id}`);
           if (fullCache) {
@@ -430,6 +443,48 @@ const loadMenu = useCallback(async () => {
 
   // Keep activeOrderRef in sync
   useEffect(() => { activeOrderRef.current = activeOrder; }, [activeOrder]);
+
+  // Convert an online order to offlineStore format for offline editing
+  const ensureOfflineCopy = (order) => {
+    if (!order || order.offline_id) return order; // already offline order
+    const offlineId = `ONLINE-${order.order_id}`;
+    const existing = getOfflineOrder(offlineId);
+    if (existing) return existing; // already cached
+    // Create offline copy
+    const offlineCopy = {
+      offline_id:        offlineId,
+      order_id:          order.order_id,
+      order_number:      order.order_number,
+      company_unique_id: order.company_unique_id,
+      order_type:        order.order_type || 'dine_in',
+      table_id:          order.table_id,
+      table_name:        order.table_name,
+      covers:            order.covers || 1,
+      order_status:      order.order_status,
+      items:             (order.items || []).filter(i => !i.is_cancelled).map(i => ({
+        food_menu_id: i.food_menu_id,
+        item_name:    i.item_name,
+        item_code:    i.item_code || '',
+        unit_price:   parseFloat(i.unit_price || 0),
+        quantity:     i.quantity || 1,
+        total_price:  parseFloat(i.unit_price || 0) * (i.quantity || 1),
+        is_veg:       i.is_veg !== false,
+        category_name: i.category_name || '',
+        order_item_id: i.order_item_id, // keep for server sync
+        kot_item_status: i.kot_item_status,
+      })),
+      subtotal:      order.subtotal || 0,
+      total_payable: order.total_payable || 0,
+      is_offline:    true,
+      is_synced:     false,
+      is_online_order: true, // flag to sync differently
+    };
+    // Save to offlineStore
+    const orders = getOfflineOrders();
+    orders.push(offlineCopy);
+    saveOfflineOrders(orders);
+    return offlineCopy;
+  };
 
   // ── Online/Offline detection + auto-sync ──────────────────
   useEffect(() => {
@@ -755,9 +810,24 @@ const loadMenu = useCallback(async () => {
       return;
     }
 
-    // For online orders that are now offline — update local state AND save to pending queue
+    // For online orders that are now offline — use offlineStore
     if (!isOnlineRef.current) {
       showToast('📴 Offline — item added, will sync when online', 'info');
+      const offlineCopy = ensureOfflineCopy(activeOrder);
+      const updated = addItemToOfflineOrder(offlineCopy.offline_id, {
+        food_menu_id:  menuItem.food_menu_id,
+        name:          menuItem.name,
+        code:          menuItem.code || '',
+        sale_price:    menuItem.sale_price,
+        is_veg:        menuItem.is_veg !== false,
+        category_name: menuItem.category_name || '',
+      });
+      if (updated) {
+        setActiveOrder({ ...updated, order_id: activeOrder.order_id });
+        setIsOfflineOrder(true);
+      }
+      return;
+      // OLD code below (skipped)
       const newItem = {
         order_id:      activeOrder.order_id,
         food_menu_id:  menuItem.food_menu_id,
@@ -898,9 +968,18 @@ const loadMenu = useCallback(async () => {
       return;
     }
 
-    // For online orders that are now offline — update local state AND pending queue
+    // For online orders that are now offline — use offlineStore
     if (!isOnlineRef.current) {
-      // Save qty change / deletion to pending queue
+      const offlineCopy = ensureOfflineCopy(activeOrder);
+      if (delta > 0) {
+        const updated = addItemToOfflineOrder(offlineCopy.offline_id, { ...item, name: item.item_name, sale_price: item.unit_price });
+        if (updated) { setActiveOrder({ ...updated, order_id: activeOrder.order_id }); setIsOfflineOrder(true); }
+      } else {
+        const updated = removeItemFromOfflineOrder(offlineCopy.offline_id, item.food_menu_id);
+        if (updated) { setActiveOrder({ ...updated, order_id: activeOrder.order_id }); setIsOfflineOrder(true); }
+      }
+      return;
+      // OLD pending queue code below (kept for reference but skipped)
       try {
         const key = `rms_pending_items_${cid}`;
         const pendingItems = JSON.parse(localStorage.getItem(key) || '[]');
