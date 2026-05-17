@@ -111,7 +111,10 @@ export default function SalesReport() {
   useEffect(() => { load(); }, [companyId]);
 
   // All date filtering is now done server-side in the load() function
-  const filtered = bills;
+  // Child branch users only see their own company's bills
+  const filtered = isChildBranch
+    ? bills.filter(b => b.company_unique_id === userCid)
+    : bills;
 
   const totalRevenue  = filtered.reduce((s,b)=>s+Number(b.total_payable||b.amount_paid||b.total_amount||0),0);
   const totalDiscount = filtered.reduce((s,b)=>s+Number(b.discount_amount||0),0);

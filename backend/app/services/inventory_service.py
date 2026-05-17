@@ -1170,7 +1170,10 @@ def get_stock_ledger(db: Session, company_id: int, node_id: int = None,
              COALESCE(ti.received_qty, ti.requested_qty) AS qty_in, 0::numeric AS qty_out, 0::numeric AS unit_cost
       FROM inv_stock_transfer t
       JOIN inv_stock_transfer_item ti ON ti.transfer_id = t.transfer_id
-      WHERE t.company_unique_id = {company_id} AND t.status = 'received'
+      WHERE (t.company_unique_id = {company_id} OR t.to_node_id IN (
+               SELECT node_id FROM inv_node WHERE company_unique_id = {company_id}
+             ) OR t.to_node_id = {company_id})
+        AND t.status = 'received'
         AND t.transfer_date BETWEEN '{fd}' AND '{td}' {nc3} {ic3}
 
       UNION ALL
