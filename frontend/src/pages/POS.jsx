@@ -963,7 +963,8 @@ const loadMenu = useCallback(async () => {
   };
 
   // ── Item Note (kitchen instruction) ──────────────────────
-  const [noteEdit, setNoteEdit] = useState(null); // { order_item_id, current }
+  const [noteEdit, setNoteEdit] = useState(null);
+  const [confirmCancel, setConfirmCancel] = useState(false); // { order_item_id, current }
   const [noteVal,  setNoteVal]  = useState('');
 
   const openNoteEdit = (item) => {
@@ -1709,7 +1710,11 @@ ${company.hsn ? `<div class="center muted" style="margin-top:4px">HSN: ${company
   };
 
   const cancelOrder = async () => {
-    if (!window.confirm('Cancel this order?')) return;
+    setConfirmCancel(true);
+  };
+
+  const doCancelOrder = async () => {
+    setConfirmCancel(false);
     try {
       await posOrderAPI.cancel(activeOrder.order_id);
       setActiveOrder(null); setKots([]); setBill(null);
@@ -2979,6 +2984,32 @@ ${company.hsn ? `<div class="center muted" style="margin-top:4px">HSN: ${company
               <button style={S.cancelBtn} onClick={() => setNoteEdit(null)}>Cancel</button>
               <button style={{ ...S.primaryBtn, background: 'linear-gradient(135deg,var(--green-700),var(--green-500))', border: 'none' }}
                 onClick={saveItemNote}>Save Note</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+
+      {/* ── CANCEL ORDER CONFIRM MODAL ── */}
+      {confirmCancel && (
+        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.5)', zIndex:9999, display:'flex', alignItems:'center', justifyContent:'center' }}>
+          <div style={{ background:'var(--surface)', borderRadius:16, padding:32, width:340, boxShadow:'0 20px 60px rgba(0,0,0,0.3)', textAlign:'center' }}>
+            <div style={{ fontSize:48, marginBottom:12 }}>🗑️</div>
+            <div style={{ fontSize:18, fontWeight:700, color:'var(--text-primary)', marginBottom:8 }}>Cancel this order?</div>
+            <div style={{ fontSize:13, color:'var(--text-secondary)', marginBottom:24 }}>This action cannot be undone. All items will be removed.</div>
+            <div style={{ display:'flex', gap:12 }}>
+              <button
+                onClick={() => setConfirmCancel(false)}
+                style={{ flex:1, padding:'10px 0', borderRadius:8, border:'1px solid var(--border)', background:'var(--surface)', color:'var(--text-primary)', fontSize:14, fontWeight:600, cursor:'pointer' }}
+              >
+                Keep Order
+              </button>
+              <button
+                onClick={doCancelOrder}
+                style={{ flex:1, padding:'10px 0', borderRadius:8, border:'none', background:'#dc2626', color:'#fff', fontSize:14, fontWeight:700, cursor:'pointer' }}
+              >
+                Yes, Cancel
+              </button>
             </div>
           </div>
         </div>
