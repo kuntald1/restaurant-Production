@@ -131,9 +131,24 @@ export default function InvNodes() {
 
   const openDeductModal = (branchNode) => {
     const cid = nodeIdToInt(branchNode.node_id);
+    const savedNodeId = deductCurrentMap[cid];
+    // savedNodeId is an integer from DB (could be inv_node.node_id or company_unique_id)
+    // Find matching node in allNodes to pre-select correctly
+    let selectVal = '';
+    if (savedNodeId != null) {
+      // Check WH/CK nodes first (integer node_id direct match)
+      const whMatch = allNodes.find(n => !n.is_branch && n.node_id === savedNodeId);
+      if (whMatch) {
+        selectVal = String(whMatch.node_id);
+      } else {
+        // Check branch nodes (stored as company_unique_id, matches nodeIdToInt("b_X") = X)
+        const brMatch = allNodes.find(n => n.is_branch && nodeIdToInt(n.node_id) === savedNodeId);
+        if (brMatch) selectVal = String(savedNodeId);
+        else selectVal = String(savedNodeId); // fallback: show raw value
+      }
+    }
     setDeductModal(branchNode);
-    setDeductNodeId(deductCurrentMap[cid] !== undefined && deductCurrentMap[cid] !== null
-      ? String(deductCurrentMap[cid]) : '');
+    setDeductNodeId(selectVal);
   };
 
   const saveDeductNode = async () => {
@@ -242,9 +257,14 @@ export default function InvNodes() {
                   {branchNodes.map((node) => {
                     const branchCid = nodeIdToInt(node.node_id);
                     const mappedNodeId = deductCurrentMap[branchCid];
-                    const mappedNode = mappedNodeId != null ? whCkNodes.find(n => n.node_id === mappedNodeId) : null;
+                    // Look up in all nodes (WH/CK by node_id, branches by company_unique_id)
+                    const mappedNode = mappedNodeId != null
+                      ? allNodes.find(n => !n.is_branch
+                          ? n.node_id === mappedNodeId
+                          : nodeIdToInt(n.node_id) === mappedNodeId)
+                      : null;
                     const deductLabel = mappedNode
-                      ? <span style={{ color: 'var(--primary)', fontWeight: 600 }}>🏭 {mappedNode.node_name}</span>
+                      ? <span style={{ color: 'var(--primary)', fontWeight: 600 }}>{mappedNode.node_icon} {mappedNode.node_name}</span>
                       : (mappedNodeId != null
                           ? <span style={{ color: 'var(--warning)' }}>Node #{mappedNodeId}</span>
                           : <span style={{ color: 'var(--text-3)', fontStyle: 'italic' }}>Not configured</span>);
@@ -401,15 +421,36 @@ export default function InvNodes() {
           <FormField label="Deduct inventory from" required>
             <Select value={deductNodeId} onChange={e => setDeductNodeId(e.target.value)}>
               <option value="">— Select a node —</option>
-              {whCkNodes.map(n => (
-                <option key={n.node_id} value={n.node_id}>
-                  {n.node_type === 'warehouse' ? '🏭' : '☁️'} {n.node_name}
-                </option>
-              ))}
+
+              {/* Warehouses & Cloud Kitchens */}
+              {allNodes.filter(n => !n.is_branch).length > 0 && (
+                <optgroup label="── Warehouses & Cloud Kitchens">
+                  {allNodes.filter(n => !n.is_branch).map(n => (
+                    <option key={n.node_id} value={n.node_id}>
+                      {n.node_icon} {n.node_name}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
+
+              {/* Branches (self or other) */}
+              {allNodes.filter(n => n.is_branch).length > 0 && (
+                <optgroup label="── Branches">
+                  {allNodes.filter(n => n.is_branch).map(n => {
+                    const indent = n.depth === 2 ? '↳ ' : n.depth === 3 ? '　↳ ' : '';
+                    return (
+                      <option key={n.node_id} value={nodeIdToInt(n.node_id)}>
+                        {indent}{n.node_icon} {n.node_name}
+                      </option>
+                    );
+                  })}
+                </optgroup>
+              )}
             </Select>
           </FormField>
           <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 4, marginBottom: 16 }}>
-            Typically this should be the warehouse or cloud kitchen that supplies this branch.
+            Select a warehouse, cloud kitchen, or branch. The selected location's stock will be
+            reduced when a POS bill is generated at <strong>{deductModal.node_name}</strong>.
           </div>
           <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
             <button className="btn btn-ghost" onClick={() => setDeductModal(null)}>Cancel</button>
