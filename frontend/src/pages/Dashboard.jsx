@@ -50,10 +50,15 @@ export default function Dashboard() {
         setCompanies(visible);
 
         if (selectedCompany) {
+          // Food menu/categories are stored under root parent company (rootCid pattern)
+          const myParentId  = selectedCompany.parant_company_unique_id;
+          const isChild     = !!myParentId && Number(myParentId) !== 0;
+          const menuCid     = isChild ? myParentId : selectedCompany.company_unique_id;
+
           const [u, fm, fc] = await Promise.allSettled([
             usersAPI.getAll(selectedCompany.company_unique_id),
-            foodMenuAPI.getAll(selectedCompany.company_unique_id),
-            foodCategoryAPI.getAll(selectedCompany.company_unique_id),
+            foodMenuAPI.getAll(menuCid),
+            foodCategoryAPI.getAll(menuCid),
           ]);
           setStats({
             users: u.status  === 'fulfilled' ? u.value.length  : 0,
