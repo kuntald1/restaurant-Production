@@ -33,3 +33,4 @@ class FoodMenu(Base):
     modified_date = Column("updatedat",  TIMESTAMP(timezone=True))
     modified_by   = Column("updatedby",  BigInteger)
     is_available  = Column("isavailable",  Boolean,        default=True,  nullable=False)
+    is_veg        = Column("is_veg",        Boolean,        default=True,  nullable=False)
