@@ -85,7 +85,7 @@ export const foodMenuAPI = {
   create:  (data)           => request('POST', '/company/createfoodmenu', data),
   update:  (id, data)       => request('PUT', `/company/updatefoodmenu/${id}`, data),
   delete:  (id)             => request('DELETE', `/company/deletefoodmenu/${id}`),
-  uploadExcel: (cid, file)  => { const fd = new FormData(); fd.append('file', file); return request('POST', `/companymenu/foodmenu/upload-excel/${cid}`, fd, true); },
+  uploadExcel: (cid, file)  => { const fd = new FormData(); fd.append('file', file); return request('POST', `/company/foodmenu/upload-excel/${cid}`, fd, true); },
 };
 
 // ── Users ─────────────────────────────────────────────────────
