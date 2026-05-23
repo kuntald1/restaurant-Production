@@ -3,7 +3,7 @@ import { foodMenuAPI, foodCategoryAPI } from '../services/api';
 import { Table, Modal, Badge, Spinner, PageHeader, FormField, Input, Textarea, Select, ConfirmDialog } from '../components/UI';
 import { useApp } from '../context/useApp';
 
-const EMPTY = { company_unique_id: '', category_id: '', code: '', name: '', description: '', sale_price: '', image_url: '', display_order: 1, is_active: true, is_available: true };
+const EMPTY = { company_unique_id: '', category_id: '', code: '', name: '', description: '', sale_price: '', image_url: '', display_order: 1, is_active: true, is_available: true, is_veg: true };
 
 export default function FoodMenu() {
   const { selectedCompany, showToast, user } = useApp();
@@ -15,6 +15,7 @@ export default function FoodMenu() {
   const [editId, setEditId] = useState(null);
   const [confirm, setConfirm] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
 
   const load = async () => {
     if (!selectedCompany) return;
@@ -37,7 +38,7 @@ export default function FoodMenu() {
   const handleSubmit = async (e) => {
     e.preventDefault(); setSaving(true);
     try {
-      const payload = {...form, sale_price: Math.round(parseFloat(form.sale_price)), display_order: parseInt(form.display_order), category_id: parseInt(form.category_id),created_by: user?.user_id, modified_by: user?.user_id};
+      const payload = {...form, sale_price: Math.round(parseFloat(form.sale_price)), display_order: parseInt(form.display_order), category_id: parseInt(form.category_id), is_veg: form.is_veg !== false, created_by: user?.user_id, modified_by: user?.user_id};
       if (modal === 'create') { await foodMenuAPI.create(payload); showToast('Menu item created!'); }
       else { await foodMenuAPI.update(editId, payload); showToast('Menu item updated!'); }
       setModal(null); load();
@@ -55,7 +56,7 @@ export default function FoodMenu() {
 
   const cols = [
     { key: 'food_menu_id', label: 'ID' },
-    { key: 'name', label: 'Name' },
+    { key: 'name', label: 'Name', render: (v, row) => <span><span style={{ color: row.is_veg !== false ? 'var(--primary)' : '#dc2626', marginRight: 5 }}>●</span>{v}</span> },
     { key: 'code', label: 'Code' },
     { key: 'category_id', label: 'Category', render: (v) => getCatName(v) },
     { key: 'sale_price', label: 'Price', render: (v) => v ? `₹${parseFloat(v).toFixed(2)}` : '—' },
@@ -70,7 +71,31 @@ export default function FoodMenu() {
 
   return (
     <div className="page">
-      <PageHeader title="Food Menu" subtitle={`Menu items for ${selectedCompany.name}`} action={<button className="btn btn-primary" onClick={openCreate}>+ New Menu Item</button>} />
+      <PageHeader title="Food Menu" subtitle={`Menu items for ${selectedCompany.name}`} action={
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          {/* Download template */}
+          <a href="/static/food_menu_template.xlsx" download
+            style={{ padding: '8px 14px', border: '1px solid var(--border)', borderRadius: 8, fontSize: 13, fontWeight: 600, color: 'var(--text-2)', textDecoration: 'none', background: 'var(--bg)' }}>
+            📥 Template
+          </a>
+          {/* Excel upload */}
+          <label style={{ padding: '8px 14px', border: '1px solid var(--border)', borderRadius: 8, fontSize: 13, fontWeight: 600, color: 'var(--text-2)', cursor: 'pointer', background: 'var(--bg)', display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+            {uploading ? '⏳ Uploading…' : '📊 Upload Excel'}
+            <input type="file" accept=".xlsx,.xls,.csv" style={{ display: 'none' }} onChange={async (e) => {
+              const file = e.target.files?.[0]; if (!file) return;
+              setUploading(true);
+              try {
+                const res = await foodMenuAPI.uploadExcel(selectedCompany.company_unique_id, file);
+                showToast(`✅ Created ${res.created}, skipped ${res.skipped}${res.errors?.length ? `, ${res.errors.length} errors` : ''}`);
+                if (res.errors?.length) console.warn('Upload errors:', res.errors);
+                load();
+              } catch (err) { showToast(err.message || 'Upload failed', 'error'); }
+              setUploading(false); e.target.value = '';
+            }} />
+          </label>
+          <button className="btn btn-primary" onClick={openCreate}>+ New Menu Item</button>
+        </div>
+      } />
       {loading ? <Spinner /> : <Table columns={cols} data={data} actions={(row) => (
         <div className="action-btns">
           <button className="btn btn-sm btn-outline" onClick={() => openEdit(row)}>Edit</button>
@@ -94,6 +119,18 @@ export default function FoodMenu() {
               </FormField>
               <FormField label="Sale Price (₹)" required><Input type="number" step="0.01" value={form.sale_price} onChange={set('sale_price')} required /></FormField>
               <FormField label="Display Order"><Input type="number" value={form.display_order} onChange={set('display_order')} /></FormField>
+              <FormField label="Veg / Non-Veg">
+                <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+                  <button type="button" onClick={() => setForm(f => ({...f, is_veg: true}))}
+                    style={{ flex: 1, padding: '8px', borderRadius: 8, border: `2px solid ${form.is_veg !== false ? 'var(--primary)' : 'var(--border)'}`, background: form.is_veg !== false ? 'var(--green-50)' : 'var(--bg)', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>
+                    🟢 Veg
+                  </button>
+                  <button type="button" onClick={() => setForm(f => ({...f, is_veg: false}))}
+                    style={{ flex: 1, padding: '8px', borderRadius: 8, border: `2px solid ${form.is_veg === false ? '#dc2626' : 'var(--border)'}`, background: form.is_veg === false ? '#fff5f5' : 'var(--bg)', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>
+                    🔴 Non-Veg
+                  </button>
+                </div>
+              </FormField>
               <FormField label="Image">
   {form.image_url && (
     <img src={form.image_url} alt="menu" style={{width:'80px',height:'80px',objectFit:'cover',borderRadius:'8px',marginBottom:'8px',display:'block'}} />

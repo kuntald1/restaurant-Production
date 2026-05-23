@@ -13,6 +13,7 @@ class FoodMenuCreate(BaseModel):
     display_order: Optional[int] = 0
     is_active: Optional[bool] = True
     is_available: Optional[bool] = True
+    is_veg: Optional[bool] = True
     created_by: Optional[int] = None
 
 # -------- UPDATE FOOD MENU --------
@@ -26,6 +27,7 @@ class FoodMenuUpdate(BaseModel):
     display_order: Optional[int] = None
     is_active: Optional[bool] = None
     is_available: Optional[bool] = None
+    is_veg: Optional[bool] = None
     is_deleted: Optional[bool] = None
     modified_by: Optional[int] = None
 
@@ -43,6 +45,7 @@ class FoodMenuResponse(BaseModel):
     is_active: bool
     is_deleted: bool
     is_available: bool
+    is_veg: bool = True
 
     class Config:
         from_attributes = True

@@ -15,6 +15,27 @@ const ITEM_STATUS_META = {
   ready:        { bg: '#d1fae5', color: '#065f46', label: 'Ready'   },
 };
 
+// Generate a short beep sound using Web Audio API
+function playNewKotSound() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const beep = (freq, start, dur) => {
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      o.connect(g); g.connect(ctx.destination);
+      o.frequency.value = freq;
+      o.type = 'sine';
+      g.gain.setValueAtTime(0.4, ctx.currentTime + start);
+      g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + start + dur);
+      o.start(ctx.currentTime + start);
+      o.stop(ctx.currentTime + start + dur + 0.05);
+    };
+    beep(880, 0,    0.12);
+    beep(1100, 0.15, 0.12);
+    beep(1320, 0.30, 0.18);
+  } catch (e) { /* silent fail if audio not allowed */ }
+}
+
 export default function Kitchen() {
   const { selectedCompany, showToast } = useApp();
   const cid = selectedCompany?.company_unique_id;
@@ -24,7 +45,8 @@ export default function Kitchen() {
   const [saving,   setSaving]   = useState(null); // kot_id being updated
   const [filter,   setFilter]   = useState('active'); // active | kot_open | kot_inprocess | ready | all
   const [autoRefresh, setAutoRefresh] = useState(true);
-  const timerRef = useRef(null);
+  const timerRef  = useRef(null);
+  const knownKots = useRef(new Set()); // track known kot_ids for new-arrival detection
 
   // ── Load all KOTs from running orders ────────────────────
   const load = useCallback(async () => {
@@ -50,6 +72,15 @@ export default function Kitchen() {
       // Sort: kot_open first, then kot_inprocess, then ready
       const ORDER = { kot_open: 0, kot_inprocess: 1, ready: 2, cancelled: 3 };
       allKots.sort((a, b) => (ORDER[a.kot_status] ?? 9) - (ORDER[b.kot_status] ?? 9) || new Date(a.sent_to_kitchen_at) - new Date(b.sent_to_kitchen_at));
+
+      // Detect NEW KOTs that weren't here before → play sound
+      const freshKots = allKots.filter(k => !knownKots.current.has(k.kot_id) && k.kot_status === 'kot_open');
+      if (freshKots.length > 0 && knownKots.current.size > 0) {
+        // Only beep if we had previous data (not first load)
+        playNewKotSound();
+      }
+      allKots.forEach(k => knownKots.current.add(k.kot_id));
+
       setKots(allKots);
     } catch (e) { /* silent — auto refresh */ }
   }, [cid]);
@@ -59,10 +90,10 @@ export default function Kitchen() {
     load().finally(() => setLoading(false));
   }, [cid]);
 
-  // Auto-refresh every 15 seconds
+  // Auto-refresh every 5 seconds when enabled
   useEffect(() => {
     if (!autoRefresh) { clearInterval(timerRef.current); return; }
-    timerRef.current = setInterval(load, 15000);
+    timerRef.current = setInterval(load, 5000);
     return () => clearInterval(timerRef.current);
   }, [autoRefresh, load]);
 
