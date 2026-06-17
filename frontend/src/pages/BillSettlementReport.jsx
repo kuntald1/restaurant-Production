@@ -7,6 +7,12 @@ const fmt   = (n) => `₹${Number(n || 0).toLocaleString('en-IN', { minimumFract
 const today = ()  => new Date().toISOString().slice(0, 10);
 const nAgo  = (n) => { const d = new Date(); d.setDate(d.getDate() - n); return d.toISOString().slice(0, 10); };
 
+function buildTree(companies) {
+  const parents  = (companies || []).filter(c => !c.parant_company_unique_id);
+  const children = (companies || []).filter(c =>  c.parant_company_unique_id);
+  return parents.map(p => ({ ...p, children: children.filter(c => c.parant_company_unique_id === p.company_unique_id) }));
+}
+
 export default function BillSettlementReport() {
   const { allCompanies, user } = useApp();
   const isSuperAdmin = user?.is_super_admin === true;
@@ -20,6 +26,7 @@ export default function BillSettlementReport() {
   const myParentId   = myCompany?.parant_company_unique_id;
   const isChildBranch = !!myParentId && Number(myParentId) !== 0;
   const rootCid      = isChildBranch ? Number(myParentId) : userCid;
+  const tree         = buildTree(visibleCompanies);
 
   const [fromDate,   setFromDate]   = useState(nAgo(30));
   const [toDate,     setToDate]     = useState(today());
@@ -63,7 +70,14 @@ export default function BillSettlementReport() {
           <label style={lbl}>Branch</label>
           <select className="input" value={branchId} onChange={e => setBranchId(e.target.value)}>
             <option value="all">All branches</option>
-            {visibleCompanies.map(c => <option key={c.company_unique_id} value={c.company_unique_id}>{c.name}</option>)}
+            {tree.map(p => (
+              <optgroup key={p.company_unique_id} label={p.name}>
+                <option value={p.company_unique_id}>{p.name}{p.children.length ? ` (+ ${p.children.length} branch)` : ''}</option>
+                {p.children.map(c => (
+                  <option key={c.company_unique_id} value={c.company_unique_id}>&nbsp;&nbsp;↳ {c.name}</option>
+                ))}
+              </optgroup>
+            ))}
           </select>
         </div>
         <div style={{ flex: 1, minWidth: 180 }}>

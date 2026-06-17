@@ -7,6 +7,12 @@ const fmt   = (n) => `₹${Number(n || 0).toLocaleString('en-IN', { minimumFract
 const today = ()  => new Date().toISOString().slice(0, 10);
 const nAgo  = (n) => { const d = new Date(); d.setDate(d.getDate() - n); return d.toISOString().slice(0, 10); };
 
+function buildTree(companies) {
+  const parents  = (companies || []).filter(c => !c.parant_company_unique_id);
+  const children = (companies || []).filter(c =>  c.parant_company_unique_id);
+  return parents.map(p => ({ ...p, children: children.filter(c => c.parant_company_unique_id === p.company_unique_id) }));
+}
+
 export default function BillSettlement() {
   const { allCompanies, user, showToast } = useApp();
   const isSuperAdmin = user?.is_super_admin === true;
@@ -21,6 +27,7 @@ export default function BillSettlement() {
   const myParentId  = myCompany?.parant_company_unique_id;
   const isChildBranch = !!myParentId && Number(myParentId) !== 0;
   const rootCid     = isChildBranch ? Number(myParentId) : userCid;
+  const tree        = buildTree(visibleCompanies);
 
   // ── filters ─────────────────────────────────────────────────────────────
   const [fromDate,   setFromDate]   = useState(nAgo(7));
@@ -62,7 +69,12 @@ export default function BillSettlement() {
   useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const filtered = bills.filter(b => {
-    if (branchId !== 'all' && Number(b.company_unique_id) !== Number(branchId)) return false;
+    if (branchId !== 'all') {
+      const inScope = (allCompanies || []).some(c =>
+        (Number(c.company_unique_id) === Number(branchId) || Number(c.parant_company_unique_id) === Number(branchId))
+        && Number(c.company_unique_id) === Number(b.company_unique_id));
+      if (!inScope) return false;
+    }
     if (billSearch.trim() && !(b.bill_number || '').toLowerCase().includes(billSearch.trim().toLowerCase())) return false;
     return true;
   });
@@ -158,8 +170,13 @@ export default function BillSettlement() {
           <label style={lbl}>Branch</label>
           <select className="input" value={branchId} onChange={e => setBranchId(e.target.value)}>
             <option value="all">All branches</option>
-            {visibleCompanies.map(c => (
-              <option key={c.company_unique_id} value={c.company_unique_id}>{c.name}</option>
+            {tree.map(p => (
+              <optgroup key={p.company_unique_id} label={p.name}>
+                <option value={p.company_unique_id}>{p.name}{p.children.length ? ` (+ ${p.children.length} branch)` : ''}</option>
+                {p.children.map(c => (
+                  <option key={c.company_unique_id} value={c.company_unique_id}>&nbsp;&nbsp;↳ {c.name}</option>
+                ))}
+              </optgroup>
             ))}
           </select>
         </div>
@@ -195,7 +212,7 @@ export default function BillSettlement() {
                   <td style={{ textTransform: 'capitalize' }}>{(b.order_type || '').replace('_', ' ')}</td>
                   <td style={{ textTransform: 'uppercase' }}>{b.payment_method}</td>
                   <td style={{ textAlign: 'right', fontWeight: 600 }}>{fmt(b.total_payable)}</td>
-                  <td><button className="btn btn-sm btn-secondary" onClick={() => openEditor(b)}>Edit</button></td>
+                  <td><button className="btn btn-sm btn-ghost" onClick={() => openEditor(b)}>✏️ Edit</button></td>
                 </tr>
               ))}
             </tbody>
