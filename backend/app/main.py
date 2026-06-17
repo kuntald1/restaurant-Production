@@ -57,6 +57,13 @@ app.include_router(contact_lead_router.router)
 app.include_router(subscription_router.router)
 app.include_router(inventory_router.router)
 try:
+    from app.routers import settlement_router
+    app.include_router(settlement_router.router)
+except Exception as e:
+    import logging
+    logging.warning(f"settlement_router not loaded: {e}. Run the bill_settlement_log SQL migration first.")
+
+try:
     from app.routers import adv_po_router
     app.include_router(adv_po_router.router)
 except Exception as e:
