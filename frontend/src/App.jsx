@@ -19,6 +19,8 @@ import Tables from './pages/Tables';
 import Kitchen from './pages/Kitchen';
 import SalesReport from './pages/SalesReport';
 import OrdersReport from './pages/OrdersReport';
+import BillSettlement from './pages/BillSettlement';
+import BillSettlementReport from './pages/BillSettlementReport';
 import PaymentMethods  from './pages/PaymentMethods';
 import CrmCustomers   from './pages/CrmCustomers';
 import CrmPromoCodes  from './pages/CrmPromoCodes';
@@ -72,6 +74,8 @@ const URL_TO_PAGE = {
   '/orders':                      OrdersReport,
   '/report/orders':               OrdersReport,
   '/all-orders':                  OrdersReport,
+  '/bill-settlement':             BillSettlement,
+  '/report/bill-settlement':      BillSettlementReport,
   '/master/payment-methods':      PaymentMethods,
   '/master/sms-settings':         SmsSettings,
   '/master/whatsapp-settings':    WhatsAppSettings,

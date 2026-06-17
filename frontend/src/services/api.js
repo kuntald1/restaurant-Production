@@ -160,6 +160,21 @@ export const posBillAPI = {
   print:      (billId)      => request('PATCH', `/pos/bill/${billId}/print`),
 };
 
+// ── Bill Settlement ───────────────────────────────────────────
+export const settlementAPI = {
+  getBillDetail: (billId)        => request('GET', `/settlement/bill/${billId}`),
+  settle:        (billId, data)  => request('PUT', `/settlement/bill/${billId}/settle`, data),
+  report:        (companyId, q = {}) => {
+    const p = new URLSearchParams();
+    if (q.from_date)   p.append('from_date',   q.from_date);
+    if (q.to_date)     p.append('to_date',     q.to_date);
+    if (q.branch_id)   p.append('branch_id',   q.branch_id);
+    if (q.bill_number) p.append('bill_number', q.bill_number);
+    const qs = p.toString();
+    return request('GET', `/settlement/report/${companyId}${qs ? `?${qs}` : ''}`);
+  },
+};
+
 // ── CRM ───────────────────────────────────────────────────────
 export const crmCustomerAPI = {
   getAll:      (cid, search)             => request('GET', `/crm/customers/${cid}${search ? `?search=${encodeURIComponent(search)}` : ''}`),
