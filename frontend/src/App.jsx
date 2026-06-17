@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { AppProvider } from './context/AppContext';
 import { useApp } from './context/useApp';
 import Sidebar from './components/Sidebar';
+import ReadyServeNotifier from './components/ReadyServeNotifier';
 import { Toast } from './components/UI';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
@@ -245,6 +246,7 @@ function AppInner() {
         />
       </main>
       <Toast />
+      <ReadyServeNotifier activePage={activePage} />
     </div>
   );
 }
