@@ -2,6 +2,12 @@ import { useState, useEffect, useCallback } from 'react';
 import { useApp } from '../context/useApp';
 import { posTableAPI, posOrderAPI, foodMenuAPI, foodCategoryAPI, crmCustomerAPI } from '../services/api';
 
+const TABLE_META = {
+  free:     { bg: '#e8f5e9', border: '#34d399', text: '#2e7d32', label: 'Free' },
+  occupied: { bg: '#fef3c7', border: '#fbbf24', text: '#92400e', label: 'Occupied' },
+  reserved: { bg: '#ede9fe', border: '#a78bfa', text: '#4c1d95', label: 'Reserved' },
+};
+
 export default function DineIn() {
   const { selectedCompany, user, showToast } = useApp();
   const cid = selectedCompany?.company_unique_id;
@@ -19,12 +25,13 @@ export default function DineIn() {
   const [newCust, setNewCust]           = useState({ name: '', phone: '', email: '' });
   const [loading, setLoading]           = useState(false);
   const [step, setStep]                 = useState('tables');
+  const [orderType, setOrderType]       = useState('dine_in');
 
   const loadTables = useCallback(async () => {
     if (!cid) return;
     try {
       const t = await posTableAPI.getAll(cid);
-      setTables(t.filter(t => t.table_status === 'free' && t.is_active));
+      setTables(t.filter(t => t.is_active));
     } catch { showToast('Failed to load tables', 'error'); }
   }, [cid]);
 
@@ -39,18 +46,18 @@ export default function DineIn() {
 
   useEffect(() => { loadTables(); loadMenus(); }, [loadTables, loadMenus]);
 
-  // ── Select Table ─────────────────────────────────────────
-  const selectTable = async (table) => {
+  // ── Create order (dine-in needs a free table; takeaway/delivery don't) ──
+  const createOrder = async ({ order_type, table }) => {
     setLoading(true);
     try {
-      const order = await posOrderAPI.create({
-        company_unique_id: cid, order_type: 'dine_in',
-        table_id: table.table_id, covers: 2, created_by: user?.user_id,
-      });
+      const payload = { company_unique_id: cid, order_type, covers: 2, created_by: user?.user_id };
+      if (order_type === 'dine_in' && table) payload.table_id = table.table_id;
+      const order = await posOrderAPI.create(payload);
       setActiveOrder(order); setItems([]); setStep('order');
     } catch { showToast('Failed to create order', 'error'); }
     setLoading(false);
   };
+  const selectTable = (table) => createOrder({ order_type: 'dine_in', table });
 
   // ── Customer Search ───────────────────────────────────────
   const searchCustomer = async () => {
@@ -109,7 +116,7 @@ export default function DineIn() {
     showToast('Order saved!');
     setStep('tables'); setActiveOrder(null);
     setItems([]); setCustomer(null); setPhone('');
-    setShowCustForm(false);
+    setShowCustForm(false); setOrderType('dine_in');
     loadTables();
   };
 
@@ -125,26 +132,72 @@ export default function DineIn() {
     <div style={S.page}><div style={S.empty}><h3>No Company Selected</h3></div></div>
   );
 
-  // ── TABLE SELECTION ──
+  // ── ORDER-TYPE SELECTION ──
   if (step === 'tables') return (
     <div style={S.page}>
       <div style={S.header}>
-        <h2 style={S.title}>🍽️ Dine In — Select Table</h2>
-        <p style={S.sub}>Select a free table to start an order</p>
+        <h2 style={S.title}>🍽️ New Order</h2>
+        <p style={S.sub}>Choose an order type{orderType === 'dine_in' ? ' — then pick a free table' : ''}</p>
       </div>
-      {loading && <div style={S.loading}>Creating order...</div>}
-      <div style={S.tableGrid}>
-        {tables.length === 0 && <div style={S.empty}>No free tables available</div>}
-        {tables.map(t => (
-          <div key={t.table_id} style={S.tableCard} onClick={() => !loading && selectTable(t)}>
-            <div style={S.tableIcon}>🪑</div>
-            <div style={S.tableName}>{t.table_name}</div>
-            <div style={S.tableSub}>{t.seats} seats</div>
-            {t.surcharge_amount > 0 && <div style={S.surcharge}>+₹{t.surcharge_amount} {t.surcharge_label}</div>}
-            <div style={S.freeTag}>Free</div>
-          </div>
+
+      {/* Order type tabs */}
+      <div style={S.typeTabs}>
+        {[['dine_in','🪑 Dine In'],['take_away','🥡 Take Away'],['delivery','🛵 Delivery']].map(([t,label]) => (
+          <button key={t} style={{ ...S.typeTab, ...(orderType === t ? S.typeTabActive : {}) }} onClick={() => setOrderType(t)}>{label}</button>
         ))}
       </div>
+
+      {loading && <div style={S.loading}>Creating order...</div>}
+
+      {orderType === 'dine_in' ? (
+        <>
+          {/* Status legend */}
+          <div style={S.legend}>
+            {Object.values(TABLE_META).map(m => (
+              <span key={m.label} style={S.legendItem}><span style={{ ...S.legendDot, background: m.bg, border: `1px solid ${m.border}` }} />{m.label}</span>
+            ))}
+            <span style={{ fontSize: 11, color: '#aaa' }}>· only free tables can be selected</span>
+          </div>
+
+          <div style={S.tableGrid}>
+            {tables.length === 0 && <div style={S.empty}>No tables found</div>}
+            {tables.map(t => {
+              const tm = TABLE_META[t.table_status] || TABLE_META.free;
+              const free = t.table_status === 'free';
+              return (
+                <div key={t.table_id}
+                  onClick={() => free && !loading && selectTable(t)}
+                  style={{ ...S.tableCard, background: tm.bg, borderColor: tm.border, cursor: free ? 'pointer' : 'not-allowed', opacity: free ? 1 : 0.6 }}>
+                  <div style={S.tableIcon}>🪑</div>
+                  <div style={S.tableName}>{t.table_name}</div>
+                  <div style={S.tableSub}>{t.seats} seats{t.floor ? ` · ${t.floor}` : ''}</div>
+                  {t.surcharge_amount > 0 && <div style={S.surcharge}>+₹{t.surcharge_amount} {t.surcharge_label}</div>}
+                  <div style={{ ...S.statusTag, color: tm.text }}>
+                    {free ? 'Free' : t.table_status === 'occupied'
+                      ? `Occupied${t.active_order_count ? ` · ${t.active_order_count} order(s)` : ''}`
+                      : 'Reserved'}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </>
+      ) : (
+        <div style={S.startPanel}>
+          <div style={{ fontSize: 44 }}>{orderType === 'take_away' ? '🥡' : '🛵'}</div>
+          <div style={{ fontWeight: 600, fontSize: 16, color: '#1a1a1a', marginTop: 6 }}>
+            {orderType === 'take_away' ? 'Take Away Order' : 'Delivery Order'}
+          </div>
+          <p style={S.sub}>
+            {orderType === 'take_away'
+              ? 'No table needed — start the order and add items.'
+              : 'No table needed — add customer & address on the next screen.'}
+          </p>
+          <button style={S.startBtn} disabled={loading} onClick={() => !loading && createOrder({ order_type: orderType })}>
+            {loading ? 'Creating…' : `Start ${orderType === 'take_away' ? 'Take Away' : 'Delivery'} Order`}
+          </button>
+        </div>
+      )}
     </div>
   );
 
@@ -156,7 +209,11 @@ export default function DineIn() {
         <div style={S.orderHeader}>
           <div>
             <div style={S.orderNum}>Order {activeOrder?.order_number}</div>
-            <div style={S.orderSub}>Table: {activeOrder?.table_name || tables.find(t => t.table_id === activeOrder?.table_id)?.table_name || '—'}</div>
+            <div style={S.orderSub}>
+              {activeOrder?.order_type === 'take_away' ? '🥡 Take Away'
+                : activeOrder?.order_type === 'delivery' ? '🛵 Delivery'
+                : `Table: ${activeOrder?.table_name || tables.find(t => t.table_id === activeOrder?.table_id)?.table_name || '—'}`}
+            </div>
           </div>
           <button style={S.doneBtn} onClick={done}>✓ Done</button>
         </div>
@@ -246,6 +303,15 @@ const S = {
   tableSub: { fontSize:'11px', color:'#888', marginTop:'4px' },
   surcharge: { fontSize:'10px', color:'#f59e0b', marginTop:'4px' },
   freeTag: { display:'inline-block', background:'#e8f5e9', color:'#2e7d32', fontSize:'11px', fontWeight:'600', padding:'2px 10px', borderRadius:'20px', marginTop:'6px' },
+  statusTag: { display:'inline-block', background:'rgba(255,255,255,.65)', fontSize:'11px', fontWeight:'600', padding:'2px 10px', borderRadius:'20px', marginTop:'6px' },
+  typeTabs: { display:'flex', gap:'8px', marginBottom:'16px', flexWrap:'wrap' },
+  typeTab: { flex:'1 1 120px', padding:'12px', borderRadius:'10px', border:'1.5px solid #e0e0e0', background:'#fff', cursor:'pointer', fontSize:'14px', fontWeight:'600', color:'#555', minHeight:'48px' },
+  typeTabActive: { border:'1.5px solid #4caf50', background:'#e8f5e9', color:'#2e7d32' },
+  legend: { display:'flex', gap:'14px', alignItems:'center', flexWrap:'wrap', marginBottom:'12px', fontSize:'12px', color:'#666' },
+  legendItem: { display:'flex', alignItems:'center', gap:'5px' },
+  legendDot: { width:'12px', height:'12px', borderRadius:'3px', display:'inline-block' },
+  startPanel: { background:'#fff', borderRadius:'12px', padding:'32px', textAlign:'center', boxShadow:'0 2px 8px rgba(0,0,0,0.06)', maxWidth:'420px' },
+  startBtn: { marginTop:'14px', background:'#4caf50', color:'#fff', border:'none', borderRadius:'10px', padding:'12px 28px', cursor:'pointer', fontWeight:'600', fontSize:'15px', minHeight:'48px' },
   orderPage: { display:'flex', flexDirection:'column', minHeight:'100vh', background:'#f8f9fa' },
   left: { background:'#fff', borderBottom:'1px solid #eee', display:'flex', flexDirection:'column', padding:'12px' },
   orderHeader: { display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'12px' },
