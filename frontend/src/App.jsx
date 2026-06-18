@@ -158,20 +158,17 @@ function AppInner() {
     // SuperAdmin is never blocked
     if (!user || user.is_super_admin) return;
     const cid = user.company_unique_id;
-    fetch(`/subscriptions/getbycompany/${cid}`)
-      .then(r => r.ok ? r.json() : [])
-      .then(subs => {
-        const active = (subs || []).filter(s => s.status === 'active');
-        if (active.length === 0) {
+    fetch(`/subscriptions/access/${cid}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        // Covered if an active, non-expired sub lists this company as the
+        // account holder OR among its branch_ids (handles branch logins).
+        if (!data || !data.active || !data.end_date) {
           setSubExpired(true);
           return;
         }
-        // Find latest end_date among active subs
-        const latest = active.reduce((a, b) =>
-          new Date(a.end_date) > new Date(b.end_date) ? a : b
-        );
         const days = Math.ceil(
-          (new Date(latest.end_date) - new Date()) / (1000 * 60 * 60 * 24)
+          (new Date(data.end_date) - new Date()) / (1000 * 60 * 60 * 24)
         );
         if (days < 0) {
           setSubExpired(true);

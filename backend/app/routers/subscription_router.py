@@ -114,6 +114,36 @@ def get_by_company(parent_company_id: int, db: Session = Depends(get_db)):
     """), {"pid": parent_company_id}).fetchall()
     return [dict(r._mapping) for r in rows]
 
+# ── Effective access for a company (lock check) ───────────────────────────────
+# A company has access if there is an active, non-expired subscription that either
+# (a) is held under that company (parent_company_id = company_id — the account holder), or
+# (b) lists that company in its branch_ids (a covered branch).
+# Returns the latest covering end_date so the client can compute days-left.
+@router.get("/access/{company_id}")
+def subscription_access(company_id: int, db: Session = Depends(get_db)):
+    rows = db.execute(text("""
+        SELECT parent_company_id, branch_ids, end_date, plan_name
+        FROM subscriptions
+        WHERE status = 'active' AND end_date >= CURRENT_DATE
+    """)).fetchall()
+    best_end = None
+    plan = None
+    for r in rows:
+        try:
+            bids = json.loads(r.branch_ids) if r.branch_ids else []
+        except Exception:
+            bids = []
+        bids = [int(b) for b in bids if str(b).strip().isdigit()]
+        covers = (r.parent_company_id == company_id) or (company_id in bids)
+        if covers and (best_end is None or r.end_date > best_end):
+            best_end = r.end_date
+            plan = r.plan_name
+    return {
+        "active": best_end is not None,
+        "end_date": str(best_end) if best_end else None,
+        "plan_name": plan,
+    }
+
 # ── Check branch validity before subscribing ─────────────────────────────────
 @router.post("/checkvalidity")
 def check_validity(branch_ids: List[int], db: Session = Depends(get_db)):
