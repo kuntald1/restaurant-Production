@@ -818,6 +818,7 @@ const loadMenu = useCallback(async () => {
 
   // ── Order selection ───────────────────────────────────────
   const selectOrder = async (order) => {
+    setShowTables(false); // close the table view when opening an order
     setRzpStatus('');
     setMerchantSub('merchant_upi');
     setPayMethod('cash');
