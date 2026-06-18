@@ -643,6 +643,7 @@ const loadMenu = useCallback(async () => {
     // Sync existing online orders that were billed while offline
     try {
       const pendingBills = JSON.parse(localStorage.getItem(`rms_pending_bills_${cid}`) || '[]');
+      const doneBills = [];
       for (const bill of pendingBills) {
         try {
           await posBillAPI.generate({
@@ -656,9 +657,18 @@ const loadMenu = useCallback(async () => {
             cgst_amount:       bill.cgst_amount || 0,
             created_by:        user?.user_id || null,
           });
-        } catch(e) { console.error('Pending bill sync failed:', e); }
+          doneBills.push(bill);
+        } catch(e) {
+          // 400 = already billed by a prior sync → treat as done; other errors stay queued
+          const st = e?.status || e?.response?.status;
+          if (st === 400) doneBills.push(bill);
+          else console.error('Pending bill sync failed:', e);
+        }
       }
-      localStorage.removeItem(`rms_pending_bills_${cid}`);
+      // Keep only the bills that did NOT sync, so failures retry next reconnect
+      const remainBills = pendingBills.filter(b => !doneBills.includes(b));
+      if (remainBills.length > 0) localStorage.setItem(`rms_pending_bills_${cid}`, JSON.stringify(remainBills));
+      else localStorage.removeItem(`rms_pending_bills_${cid}`);
       loadOrders();
     } catch {}
 
@@ -700,6 +710,32 @@ const loadMenu = useCallback(async () => {
               const stillExists = order.items.find(i => i.food_menu_id === si.food_menu_id);
               if (!stillExists) {
                 await posOrderAPI.updateQty(order.order_id, si.order_item_id, 0).catch(() => {});
+              }
+            }
+          }
+          // If this online order was BILLED while offline, generate the bill on the
+          // server too — otherwise it stays `ready`, lingers in the running list,
+          // and never reaches Bill Settlement.
+          if (order.order_status === 'billed' && order.payment_method) {
+            try {
+              await posBillAPI.generate({
+                order_id:          order.order_id,
+                company_unique_id: order.company_unique_id,
+                payment_method:    order.payment_method,
+                amount_paid:       parseFloat(order.amount_paid || order.total_payable || 0),
+                discount_amount:   parseFloat(order.discount_amount || order.discount || 0),
+                service_charge:    parseFloat(order.surcharge || 0),
+                sgst_amount:       parseFloat(order.sgst_amount || 0),
+                cgst_amount:       parseFloat(order.cgst_amount || 0),
+                created_by:        order.created_by || user?.user_id || null,
+              });
+            } catch (billErr) {
+              // 400 "Bill already generated"/"already exists" means a prior sync
+              // already billed it — safe to treat as done.
+              const st = billErr?.status || billErr?.response?.status;
+              if (st !== 400) {
+                console.error('Online-order offline bill sync failed:', order.order_id, billErr);
+                throw billErr; // keep it pending; don't mark synced on a real failure
               }
             }
           }
