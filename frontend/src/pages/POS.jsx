@@ -191,6 +191,7 @@ export default function POS({ onNavigate }) {
 
   // ── State ─────────────────────────────────────────────────
   const [tables,     setTables]     = useState([]);
+  const [showTables, setShowTables] = useState(false); // center table-picker view
   const [orders,     setOrders]     = useState([]);
   const [activeOrder,setActiveOrder]= useState(null);
   const activeOrderRef = useRef(null);
@@ -879,6 +880,24 @@ const loadMenu = useCallback(async () => {
       resetForm();
     } catch (e) { showToast(e.message, 'error'); }
     setSaving(false);
+  };
+
+  // ── Table picker view (center panel) ──────────────────────
+  const openTableView = () => { loadTables(); setShowTables(true); };
+  const pickTableForView = (t) => {
+    if (t.table_status === 'reserved') return;            // reserved → not selectable
+    if (t.table_status === 'occupied') {
+      // Open the table's existing running order if there is one
+      const existing = orders.find(o =>
+        o.table_id === t.table_id &&
+        o.order_status !== 'billed' && o.order_status !== 'cancelled');
+      if (existing) { setShowTables(false); selectOrder(existing); return; }
+    }
+    // Free table (or occupied with free seats) → start a new dine-in order, table preselected
+    setSelectedTable(t);
+    setOrderType('dine_in');
+    setShowTables(false);
+    setModal('neworder');
   };
 
   // ── Add item ─────────────────────────────────────────────
@@ -1912,6 +1931,15 @@ ${company.hsn ? `<div class="center muted" style="margin-top:4px">HSN: ${company
 
         <button style={S.newBtn} onClick={() => setModal('neworder')}>+ New Order</button>
 
+        <button
+          style={{ margin: '0 8px 6px', padding: '8px', borderRadius: 8, fontWeight: 600, fontSize: 12, cursor: 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+            border: '1px solid ' + (showTables ? 'var(--primary)' : 'var(--border-light)'),
+            background: showTables ? 'var(--primary)' : '#fff', color: showTables ? '#fff' : 'var(--text-2)' }}
+          onClick={() => (showTables ? setShowTables(false) : openTableView())}>
+          🪑 {showTables ? 'Hide Tables' : 'Table View'}
+        </button>
+
         <div style={{ flex: 1, overflowY: 'auto' }}>
           {orders.length === 0 && <div style={{ padding: '20px 12px', fontSize: 12, color: 'var(--text-3)', textAlign: 'center' }}>No running orders</div>}
           {orders.map(o => {
@@ -1957,10 +1985,62 @@ ${company.hsn ? `<div class="center muted" style="margin-top:4px">HSN: ${company
 
       {/* ── CENTER: Order Detail ── */}
       <div style={S.center}>
-        {!activeOrder ? (
+        {showTables ? (
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 4px 12px' }}>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 17 }}>🪑 Tables</div>
+                <div style={{ fontSize: 12, color: 'var(--text-3)' }}>Tap a free table to start an order, or an occupied one to open it</div>
+              </div>
+              <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                {[['#d1fae5','Free'],['#fef3c7','Occupied'],['#ede9fe','Reserved']].map(([bg,label]) => (
+                  <span key={label} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: 'var(--text-3)' }}>
+                    <span style={{ width: 11, height: 11, borderRadius: 3, background: bg, display: 'inline-block' }}/>{label}
+                  </span>
+                ))}
+                <button style={S.closeBtn} onClick={() => setShowTables(false)}>✕</button>
+              </div>
+            </div>
+            <div style={{ flex: 1, overflowY: 'auto', padding: '2px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(165px,1fr))', gap: 12 }}>
+                {tables.map(t => {
+                  const tm = TABLE_META[t.table_status] || TABLE_META.free;
+                  const selectable = t.table_status !== 'reserved';
+                  return (
+                    <div key={t.table_id}
+                      onClick={() => pickTableForView(t)}
+                      style={{ ...S.tableCard, alignItems: 'stretch', textAlign: 'left', gap: 6,
+                        background: tm.bg, borderColor: tm.border,
+                        cursor: selectable ? 'pointer' : 'not-allowed', opacity: selectable ? 1 : .6 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontWeight: 700, fontSize: 15, color: tm.text }}>{t.table_name}</span>
+                        <span style={{ fontSize: 10, fontWeight: 700, color: tm.text, background: 'rgba(255,255,255,.65)', padding: '2px 8px', borderRadius: 8, textTransform: 'capitalize' }}>{t.table_status}</span>
+                      </div>
+                      <div style={{ fontSize: 11, color: 'var(--text-3)' }}>{t.seats} seats · {t.floor || 'Ground Floor'}</div>
+                      <div style={{ fontSize: 11, color: 'var(--text-3)' }}>
+                        {t.section_type === 'ac' ? '❄️ AC' : 'Non-AC'}{t.section ? ` · ${t.section}` : ''}
+                      </div>
+                      {parseFloat(t.surcharge_amount || 0) > 0 && (
+                        <div style={{ fontSize: 10, color: '#92400e', fontWeight: 600 }}>+₹{parseFloat(t.surcharge_amount).toFixed(0)} {t.surcharge_label || 'Surcharge'}</div>
+                      )}
+                      {t.table_status === 'occupied' && (
+                        <div style={{ fontSize: 10, color: tm.text, fontWeight: 600 }}>{t.occupied_seats || 0}/{t.seats} seats · {t.active_order_count || 0} order(s)</div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+              {tables.length === 0 && <div style={{ textAlign: 'center', color: 'var(--text-3)', padding: 30, fontSize: 13 }}>No tables configured.</div>}
+            </div>
+          </div>
+        ) : !activeOrder ? (
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--text-3)' }}>
             <div style={{ fontSize: 48, marginBottom: 12 }}>🍽️</div>
             <div style={{ fontWeight: 600, fontSize: 16 }}>Select an order or create a new one</div>
+            <button onClick={openTableView}
+              style={{ marginTop: 16, padding: '8px 18px', borderRadius: 8, border: '1px solid var(--primary)', background: '#fff', color: 'var(--primary)', fontWeight: 600, fontSize: 13, cursor: 'pointer' }}>
+              🪑 View Tables
+            </button>
           </div>
         ) : (
           <>
